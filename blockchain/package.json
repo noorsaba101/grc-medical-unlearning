@@ -1,0 +1,17 @@
+{
+  "name": "grc-unlearning-local-audit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {"node": ">=22.13.0"},
+  "scripts": {
+    "node": "hardhat node --hostname 127.0.0.1",
+    "compile": "node scripts/evm_bridge.cjs --compile",
+    "test": "node --test tests/contract.test.cjs"
+  },
+  "devDependencies": {
+    "hardhat": "3.20.0",
+    "ethers": "6.17.0",
+    "solc": "0.8.37"
+  }
+}

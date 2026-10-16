@@ -240,3 +240,8 @@ snapshots/
 !/results/README.md
 !/results/examples/
 !/results/examples/**
+
+# Local governance-chain dependencies and generated build state.
+/blockchain/node_modules/
+/blockchain/cache/
+/blockchain/artifacts/

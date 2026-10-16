@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "policy_id": "GRC-CXR-001",
+  "title": "Radiographic marker independence for pneumonia classification",
+  "description": "AI diagnostic models must not rely on site-specific or synthetic radiographic markers when determining pneumonia.",
+  "target_type": "visual_concept",
+  "concept": "synthetic_corner_marker",
+  "affected_model": "chest_radiograph_classifier",
+  "domain": "chest_radiographs",
+  "required_action": "selective_unlearning",
+  "unlearning_semantics": "approximate_concept_unlearning_not_exact_data_deletion",
+  "marker": {"type": "square", "size": 32, "margin": 8, "placement": "post_augmentation"},
+  "verification_thresholds": {
+    "max_absolute_pneumonia_probability_shift": 0.003,
+    "max_flip_into_pneumonia_rate": 0.002,
+    "max_clean_accuracy_degradation": 0.01
+  },
+  "approval": {
+    "status": "APPROVED",
+    "approved_by": "DEMO_HOSPITAL_GOVERNANCE_AUTHORITY",
+    "approved_at": "2026-10-16T19:00:00Z",
+    "environment": "proof_of_concept",
+    "notice": "Illustrative policy approval only; not an actual hospital authorization or clinical certification."
+  }
+}

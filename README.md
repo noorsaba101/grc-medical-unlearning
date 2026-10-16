@@ -22,8 +22,8 @@ grc-medical-unlearning/
     README.md          Original MedCoSS README and citation
     RUNPOD_SETUP.md    Preserved historical environment/reproduction notes
     LICENSE            Preserved inherited license
-  blockchain/          Reserved for future integration
-  policies/            Reserved for future GRC policy definitions
+  blockchain/          Solidity contract, local Hardhat EVM, ethers bridge/tests
+  policies/            Illustrative approved policy and verification limits
   manifests/           Generated provenance (ignored), documentation/templates
   results/             Generated metrics (ignored), documentation/templates
   scripts/             Research CLI launchers
@@ -31,7 +31,66 @@ grc-medical-unlearning/
 ```
 
 Datasets, checkpoints, and generated outputs are excluded from version control.
-The `blockchain/` and `policies/` directories contain documentation only.
+The governance demo reads existing ML artifacts; it never retrains or unlearns.
+
+## Minimal end-to-end GRC governance demo
+
+```text
+GRC Policy
+  ↓
+Policy Resolver
+  ↓
+Smart Contract Authorization
+  ↓
+Off-chain Selective Unlearning (reference to the completed Stage 3 run)
+  ↓
+Verification
+  ↓
+Blockchain Completion Record
+```
+
+The policy resolver derives concept-exposure and clean-retention references from
+the unchanged manifest. A real Solidity contract on a local Hardhat EVM registers
+and authorizes the request; Python verifies existing Stage 3 evidence, and the
+contract completes the request only after a passing verifier attestation. Only
+hashes, status, timestamps and actor addresses go on-chain—not model weights,
+images, patient data, file paths or full policy/request JSON. All neural-network
+updates stay **off-chain**. An explicitly labelled mock is also available.
+
+Because Stage 3 already ran, this demo authorizes **acceptance/verification of
+its pre-existing result**, not the historical weight update. It does not claim
+retroactive execution authorization. The illustrative policy approval/dev
+accounts are not a real hospital approval. This is a small research proof of
+concept, not production blockchain or clinical infrastructure. The off-chain
+verifier is trusted; hashes anchor reported evidence, not proof of ML correctness.
+
+With Node 22.22+ LTS, install/start the local chain in one terminal:
+
+```bash
+npm --prefix blockchain ci
+npm --prefix blockchain run node
+```
+
+In another terminal, from the repository root on RunPod:
+
+```bash
+python -m grc_unlearning.grc_pipeline \
+  --config grc_unlearning/config/grc_demo_config.json --backend evm
+```
+
+This reads the real checkpoint/Stage 3 JSON paths in the config and writes
+`results/grc_cxr_001/{request.json,verification_summary.json,blockchain_audit.json,deployment.json}`.
+No extra Python dependencies are needed. For chain-free testing, use
+`--backend mock --results-dir results/grc_cxr_001_mock`; it is **not blockchain
+execution**. For a local-only synthetic smoke demo without RunPod files, use
+`python scripts/demo_grc_fixture.py --backend evm --output-dir results/grc_fixture_evm`
+with the node running; those fixtures are explicitly **not real ML results**.
+
+The illustrative policy requires absolute pneumonia probability shift <= 0.003,
+flip-into-pneumonia rate <= 0.002, and clean accuracy loss <= 0.01. The reported
+Stage 3 values (0.001464, 0.000989, and approximately 0.003628) satisfy these limits;
+actual completion checks full-precision JSON evidence and input integrity.
+See [governance commands, contract roles, trust limits, and tests](blockchain/README.md).
 
 ## Current implementation: Stages 1, 2, and 3
 
@@ -97,7 +156,8 @@ Defaults are 3 epochs, constant LR 1e-5, batch size 32, seed 10, and both auxili
 weights 1.0. Outputs go to the ignored
 `/workspace/grc-medical-unlearning/checkpoints/unlearned/seed_10/` directory.
 See [Stage 3 loss, selection, and output documentation](grc_unlearning/STAGE3_UNLEARNING.md).
-No blockchain functionality is implemented.
+Stage 3 itself performs no blockchain operations; the separate governance demo
+above authorizes and audits acceptance of its existing artifacts.
 
 ## Configuration and commands
 

@@ -3,7 +3,8 @@
 This stage suppresses a controlled synthetic shortcut while retaining clean
 diagnostic predictions. It is **approximate concept unlearning**, not exact
 training-data deletion, certified forgetting, or a clinical validation claim.
-No blockchain operations are implemented.
+This trainer performs no blockchain operations. The separate governance demo
+described in `blockchain/README.md` authorizes/audits acceptance of its outputs.
 
 ## Run on RunPod
 

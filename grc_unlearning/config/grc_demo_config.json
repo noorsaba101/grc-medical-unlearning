@@ -1,0 +1,13 @@
+{
+  "policy_path": "policies/GRC-CXR-001.json",
+  "dataset_root": "/workspace/grc-medical-unlearning/data/ds_xray",
+  "manifest_path": "manifests/chestxr_seed_10.json",
+  "effective_provenance_path": "/workspace/grc-medical-unlearning/checkpoints/biased/seed_10_strong_epoch_selection/effective_provenance.json",
+  "biased_checkpoint": "/workspace/grc-medical-unlearning/checkpoints/biased/seed_10_strong_epoch_selection/checkpoint.pth",
+  "unlearned_checkpoint": "/workspace/grc-medical-unlearning/checkpoints/unlearned/seed_10/checkpoint.pth",
+  "stage3_dir": "/workspace/grc-medical-unlearning/checkpoints/unlearned/seed_10",
+  "results_dir": "results/grc_cxr_001",
+  "expected_test_samples": 3032,
+  "request_timestamp": "2026-10-16T19:00:00Z",
+  "expected_statistics": {"manifest_records": 12121, "train_samples": 9695, "val_samples": 2426, "marked_train_samples": 645}
+}
