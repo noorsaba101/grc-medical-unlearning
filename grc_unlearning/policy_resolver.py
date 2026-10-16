@@ -31,7 +31,8 @@ def hash_file(path):
     return digest.hexdigest()
 
 
-def load_json(path):
+def parse_json(text):
+    """Parse strict JSON evidence, including exact text transported in a handoff."""
     def pairs(items):
         result = {}
         for key, value in items:
@@ -43,11 +44,15 @@ def load_json(path):
     def invalid(value):
         raise ValueError("non-finite JSON constant: {}".format(value))
 
-    with Path(path).open(encoding="utf-8") as stream:
-        value = json.load(stream, object_pairs_hook=pairs, parse_constant=invalid)
+    value = json.loads(text, object_pairs_hook=pairs, parse_constant=invalid)
     if not isinstance(value, dict):
-        raise ValueError("expected a JSON object: {}".format(path))
+        raise ValueError("expected a JSON object")
     return value
+
+
+def load_json(path):
+    with Path(path).open(encoding="utf-8") as stream:
+        return parse_json(stream.read())
 
 
 def write_json(path, value):

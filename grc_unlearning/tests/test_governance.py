@@ -58,6 +58,16 @@ def create_fixture(directory):
                        notice="SYNTHETIC TEST DATA, not the project's Stage 3 measurements")
         write_json(result.parent / file_name, metrics)
     write_json(result.parent / "selection.json", {"status": "selected_post_update_epoch", "selected_epoch": 1, "source_clean_accuracy": .98})
+    before_metrics = load_json(result.parent / "before_unlearning_metrics.json")
+    after_metrics = load_json(result.parent / "after_unlearning_metrics.json")
+    write_json(result.parent / "comparison.json", {
+        "before_unlearning_metrics": before_metrics, "after_unlearning_metrics": after_metrics,
+        "selection": load_json(result.parent / "selection.json"),
+        "after_minus_before": {key: after_metrics[key] - before_metrics[key] for key in
+                               ("clean_accuracy", "marked_accuracy", "mean_absolute_probability_change",
+                                "mean_pneumonia_probability_change", "prediction_flip_rate", "flip_into_pneumonia_rate")},
+        "approximate_concept_unlearning_only": True, "exact_data_deletion_claim": False,
+    })
     effective = directory / "effective_provenance.json"
     write_json(effective, {"records": [dict(r, **geometry) for r in records], "effective_marker": geometry,
                             "source_manifest_sha256": hash_file(manifest), "selected_sample_ids_sha256": selected_hash})

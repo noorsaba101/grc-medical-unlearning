@@ -64,22 +64,42 @@ accounts are not a real hospital approval. This is a small research proof of
 concept, not production blockchain or clinical infrastructure. The off-chain
 verifier is trusted; hashes anchor reported evidence, not proof of ML correctness.
 
-With Node 22.22+ LTS, install/start the local chain in one terminal:
+For the current RunPod Ubuntu 18.04 environment, export with **Python only**;
+do not change its ML environment or install Node/glibc updates:
+
+```bash
+python -m grc_unlearning.grc_pipeline \
+  --config grc_unlearning/config/grc_demo_config.json \
+  --export-handoff results/grc_cxr_001/handoff.json
+```
+
+Copy that one JSON file to the same relative location in an updated repository
+checkout on a **separate WSL machine**. No raw model, image, or manifest files
+are required there. With compatible Node 22.22+ LTS in WSL, start the chain:
 
 ```bash
 npm --prefix blockchain ci
 npm --prefix blockchain run node
 ```
 
-In another terminal, from the repository root on RunPod:
+In another WSL terminal, from the repository root:
 
 ```bash
-python -m grc_unlearning.grc_pipeline \
-  --config grc_unlearning/config/grc_demo_config.json --backend evm
+python3 -m grc_unlearning.grc_pipeline \
+  --config grc_unlearning/config/grc_demo_config.json --backend evm \
+  --handoff results/grc_cxr_001/handoff.json \
+  --results-dir results/grc_cxr_001_wsl
 ```
 
-This reads the real checkpoint/Stage 3 JSON paths in the config and writes
-`results/grc_cxr_001/{request.json,verification_summary.json,blockchain_audit.json,deployment.json}`.
+The exporter hashes actual RunPod files and includes their metrics/verification
+JSON evidence in a deterministic bundle. WSL validates embedded hashes and
+recomputes thresholds without opening RunPod paths. It writes
+`results/grc_cxr_001_wsl/{request.json,verification_summary.json,blockchain_audit.json,deployment.json}`.
+The audit distinguishes RunPod ML/hash attestations from separate EVM execution;
+absent checkpoint hashes cannot be independently rehashed on WSL. The unsigned
+bundle needs trusted transport; an optional `--expected-handoff-sha256` pins the
+exact export file. See the [portable handoff instructions](blockchain/HANDOFF.md).
+The original single-machine mode is preserved by omitting both handoff flags.
 No extra Python dependencies are needed. For chain-free testing, use
 `--backend mock --results-dir results/grc_cxr_001_mock`; it is **not blockchain
 execution**. For a local-only synthetic smoke demo without RunPod files, use

@@ -45,27 +45,21 @@ def threshold_checks(before, after, criteria):
                   "comparison": "observed <= limit"} for key, value in values.items()}
 
 
-def verify_stage3(request, config):
-    check_artifacts(request)
-    policy = validate_policy(load_json(request["input_artifacts"]["policy"]["reference"]))
+def validate_stage3_evidence(request, policy, stage3, before, after, selection, expected_test_samples=None):
+    """Pure evidence checks shared by local-file verification and portable import.
+
+    This does not access files or authenticate an exporter. Callers establish the
+    policy, artifact hashes and source/result reference bindings separately.
+    """
+    validate_policy(policy)
     if (request["policy_id"] != policy["policy_id"] or request["verification_criteria"] != policy["verification_thresholds"]
             or request["marker"] != policy["marker"]):
         raise ValueError("request criteria do not match the approved policy")
-    directory = Path(config["stage3_dir"])
-    before_path, after_path = directory / "before_unlearning_metrics.json", directory / "after_unlearning_metrics.json"
-    selection_path = directory / "selection.json"
-    evidence = {"before_metrics": artifact(before_path), "after_metrics": artifact(after_path),
-                "stage3_selection": artifact(selection_path), "result_model": artifact(config["unlearned_checkpoint"])}
-    before, after, selection = load_json(before_path), load_json(after_path), load_json(selection_path)
-    source_path, result_path = Path(config["biased_checkpoint"]).resolve(), Path(config["unlearned_checkpoint"]).resolve()
-    if (Path(before["checkpoint"]).resolve() != source_path or Path(after["checkpoint"]).resolve() != result_path
-            or source_path == result_path):
-        raise ValueError("metric checkpoint references do not match the requested source/result")
     if any(marker_from_metadata(m) != request["marker"] for m in (before, after)):
         raise ValueError("verification metrics use the wrong marker geometry")
     if (type(before.get("num_samples")) is not int or before["num_samples"] < 1
             or before["num_samples"] != after.get("num_samples")
-            or (config.get("expected_test_samples") is not None and after["num_samples"] != config["expected_test_samples"])):
+            or (expected_test_samples is not None and after["num_samples"] != expected_test_samples)):
         raise ValueError("source/result evaluation sample counts differ from the expected paired setup")
     for m in (before, after):
         validate_metrics_record(m)
@@ -76,15 +70,33 @@ def verify_stage3(request, config):
         raise ValueError("source/result class-conditional sample counts differ")
     if before["environment"] != after["environment"]:
         raise ValueError("source/result evaluation environments differ")
-    stage3 = load_json(request["input_artifacts"]["stage3_configuration"]["reference"])
-    if stage3.get("evaluation_batch_size") != 1:
-        raise ValueError("Stage 3 configuration does not specify paired evaluation batch size 1")
+    if (stage3.get("evaluation_batch_size") != 1 or stage3.get("stage") != "approximate_marker_concept_unlearning"
+            or marker_from_metadata(stage3) != policy["marker"]):
+        raise ValueError("Stage 3 configuration differs from the approved method/paired marker setup")
     if (selection.get("status") != "selected_post_update_epoch" or type(selection.get("selected_epoch")) is not int
             or selection["selected_epoch"] <= 0 or after.get("epoch") != selection["selected_epoch"]):
         raise ValueError("Stage 3 fallback/unselected checkpoints cannot be accepted as unlearned results")
     if not math.isclose(selection.get("source_clean_accuracy", -1), before["clean_accuracy"], rel_tol=0, abs_tol=1e-12):
         raise ValueError("selection source accuracy differs from the supplied source evaluation")
     checks = threshold_checks(before, after, request["verification_criteria"])
+    return checks
+
+
+def verify_stage3(request, config):
+    check_artifacts(request)
+    policy = validate_policy(load_json(request["input_artifacts"]["policy"]["reference"]))
+    directory = Path(config["stage3_dir"])
+    before_path, after_path = directory / "before_unlearning_metrics.json", directory / "after_unlearning_metrics.json"
+    selection_path = directory / "selection.json"
+    evidence = {"before_metrics": artifact(before_path), "after_metrics": artifact(after_path),
+                "stage3_selection": artifact(selection_path), "result_model": artifact(config["unlearned_checkpoint"])}
+    before, after, selection = load_json(before_path), load_json(after_path), load_json(selection_path)
+    source_path, result_path = Path(config["biased_checkpoint"]).resolve(), Path(config["unlearned_checkpoint"]).resolve()
+    if (Path(before["checkpoint"]).resolve() != source_path or Path(after["checkpoint"]).resolve() != result_path
+            or source_path == result_path):
+        raise ValueError("metric checkpoint references do not match the requested source/result")
+    stage3 = load_json(request["input_artifacts"]["stage3_configuration"]["reference"])
+    checks = validate_stage3_evidence(request, policy, stage3, before, after, selection, config.get("expected_test_samples"))
     if evidence["result_model"]["sha256"] == request["model_ref"]["sha256"]:
         raise ValueError("result is byte-identical to the biased source checkpoint")
     check_evidence({"evidence": evidence})

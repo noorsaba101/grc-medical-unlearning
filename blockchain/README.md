@@ -22,6 +22,11 @@ user authentication. No production or clinical assurance follows from completion
 
 ## Stack and installation
 
+For the existing Ubuntu 18.04 RunPod ML environment, **do not install Node there**.
+Use the [portable RunPod-to-WSL handoff](HANDOFF.md): Python-only export on RunPod,
+then blockchain acceptance on a separate compatible WSL machine. No model or
+dataset files need to leave RunPod.
+
 Use Node **22.22+ LTS** (tested locally), npm, and Python 3.8+. No additional Python
 packages or changes to the MedCoSS/PyTorch environment are required for governance.
 Pinned dependencies/lockfile: Hardhat 3.20.0, ethers 6.17.0, solc-js 0.8.37.
@@ -41,9 +46,10 @@ the adapter refuses non-loopback URLs and other chain IDs. Do not expose this
 RPC endpoint publicly, deposit real funds, or reuse development keys. On Windows
 PowerShell use `npm.cmd` if script execution policy blocks `npm.ps1`.
 
-## Run the actual RunPod artifact demo
+## Existing single-machine mode (compatible Node host with actual artifacts)
 
-In another terminal, activate the repository's environment and run:
+On a host that already supports the required Node version and has the actual
+artifacts, the original mode remains unchanged. In another terminal run:
 
 ```bash
 cd /workspace/grc-medical-unlearning
