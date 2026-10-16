@@ -1,0 +1,100 @@
+{
+  "authorization_scope": "authorize acceptance/verification of a precomputed off-chain Stage 3 result; no new weight updates",
+  "deployment": {
+    "block_number": 1,
+    "chain_id": 31337,
+    "compiler": "0.8.37+commit.f401782d.Emscripten.clang",
+    "contract_address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+    "governor": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+    "mode": "real_local_evm",
+    "operator": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+    "runtime_code_hash": "0xa8862978241b0aead7efa449deaa6335ca54c9fa4071c8d48019db8aeabefac6",
+    "timestamp": 1792182228,
+    "transaction_hash": "0x2068646e46d32c0428c0a6d507449a3123dab1c913b6934c39c7a8c1f52432e5",
+    "verifier": "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC"
+  },
+  "finished_at": "2026-10-16T20:24:18.111530+00:00",
+  "ml_executed_now": false,
+  "mode": "real_local_evm",
+  "portable_handoff": {
+    "artifact_hashing_location": "RunPod",
+    "authorization_scope": "acceptance_and_verification_of_precomputed_stage3_result",
+    "blockchain_execution_location": "separate_local_Hardhat_EVM",
+    "bundle_sha256": "05507ba41a7c75fb19460b2c7073703294586b5c51425e0c8e26ce0d3d51969c",
+    "consumer_validation": "Embedded JSON bytes/hashes, request bindings, trusted policy, and threshold checks recomputed; raw model/provenance digests remain exporter attestations",
+    "evidence_kind": "actual_artifacts",
+    "exported_verification_summary_sha256": "e9acc48ef41709eb0aff6d64254f437ebeb4b3ec98a6b54efa403efe8da0f1d6",
+    "external_file_hash_pin_checked": true,
+    "handoff_file_sha256": "6829cd19a6bdbcec9651cbdac63896df085eaa8726c4c176f098aeba464d3f57",
+    "handoff_reference": "/mnt/c/D/PhD/1/Blockchain/project/grc-medical-unlearning/results/grc_cxr_001/handoff.json",
+    "hashes_computed_from_source_files": true,
+    "historical_weight_updates_blockchain_authorized": false,
+    "images_included": false,
+    "intended_blockchain_destination": "separate_local_Hardhat_EVM",
+    "manifest_sha256": "990bad3bf99bd23338405eb857027a98de16d6cf6b3d14be1188c0ba709549f5",
+    "ml_execution_location": "RunPod",
+    "model_weights_included": false,
+    "model_weights_or_images_stored_on_chain": false,
+    "raw_checkpoints_read_on_consumer": false,
+    "raw_manifest_rehashed_on_consumer": false,
+    "stage3_comparison_sha256": "5e787f5d855d6e8df5b192589544b85d78e8e0379fd56e795d2895bcfefb3f02",
+    "trust_notice": "Unsigned exporter attestation. Embedded JSON hashes and thresholds are checkable; raw checkpoint/provenance digests require trust in the exporter. Use trusted transport and optionally pin the whole-file SHA-256.",
+    "trusted_local_policy_canonical_sha256": "65b03fa1150788b3072505435c091c9e8d04a380ccaea5691bade68d2664bfbb"
+  },
+  "request_file_sha256": "bb85e7ecd28643ae10586821e21e09e3f95f0938749d2488426aefa7bf7c1277",
+  "request_id": "53fb0aa50dd6ceff5b6431af1e05893ac9100d763c18a5c170052957bae26cf5",
+  "started_at": "2026-10-16T20:23:51.793874+00:00",
+  "state": {
+    "authorized_at": 1792182237,
+    "authorizer": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+    "completed_at": 1792182248,
+    "completed_by": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+    "policy_hash": "0xe2f44f884d1abbbc3c7784b730c5351ce92c8850c65377f14514a34c9d7f7554",
+    "policy_id_hash": "0x6ab7c5d6d75102d197dd698e67111e901c4399f7eec9509d861f07d137cdbd12",
+    "registered_at": 1792182231,
+    "request_hash": "0xbb85e7ecd28643ae10586821e21e09e3f95f0938749d2488426aefa7bf7c1277",
+    "requester": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+    "result_model_hash": "0xee154de92f3970dbb6088e8613dd957be8fe9ab9dbd1e1106febd15bae32df7b",
+    "source_model_hash": "0x76f1352f3dbdbd2e8b454755f03582f08f7e549e7b380d0e1c24a9217c524331",
+    "status": "COMPLETED",
+    "verification_hash": "0xd0e867f181863477af616ca83f9beb4501a06c070aa29e64667e3228a2bd8a48",
+    "verified_at": 1792182243,
+    "verified_by": "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC"
+  },
+  "status": "COMPLETED",
+  "steps": [
+    {
+      "actor": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "block_number": 2,
+      "mode": "real_local_evm",
+      "operation": "register",
+      "timestamp": 1792182231,
+      "transaction_hash": "0xee47d6957f010f730a1031e2af27d78a5c66537066af1a3b833a588aa4c20158"
+    },
+    {
+      "actor": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+      "block_number": 3,
+      "mode": "real_local_evm",
+      "operation": "authorize",
+      "timestamp": 1792182237,
+      "transaction_hash": "0x5cf934b5845e201d492c0fcc0e70ca92586816fe97f682032dff3c07143621da"
+    },
+    {
+      "actor": "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+      "block_number": 4,
+      "mode": "real_local_evm",
+      "operation": "verify",
+      "timestamp": 1792182243,
+      "transaction_hash": "0x604984283dabeed31ac962dcdee10feacb077d49572fd2325c19b0016a6f620c"
+    },
+    {
+      "actor": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+      "block_number": 5,
+      "mode": "real_local_evm",
+      "operation": "complete",
+      "timestamp": 1792182248,
+      "transaction_hash": "0x2c6c650c7c5348972ec22ca5104badf9f064f55071956f456c4fb8058e85ab1e"
+    }
+  ],
+  "verification_summary_sha256": "d0e867f181863477af616ca83f9beb4501a06c070aa29e64667e3228a2bd8a48"
+}

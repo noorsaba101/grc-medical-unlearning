@@ -1,0 +1,13 @@
+{
+  "block_number": 1,
+  "chain_id": 31337,
+  "compiler": "0.8.37+commit.f401782d.Emscripten.clang",
+  "contract_address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+  "governor": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+  "mode": "real_local_evm",
+  "operator": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+  "runtime_code_hash": "0xa8862978241b0aead7efa449deaa6335ca54c9fa4071c8d48019db8aeabefac6",
+  "timestamp": 1792182228,
+  "transaction_hash": "0x2068646e46d32c0428c0a6d507449a3123dab1c913b6934c39c7a8c1f52432e5",
+  "verifier": "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC"
+}

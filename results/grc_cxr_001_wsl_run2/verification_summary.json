@@ -1,0 +1,271 @@
+{
+  "after_metrics": {
+    "checkpoint": "/workspace/grc-medical-unlearning/checkpoints/unlearned/seed_10/checkpoint.pth",
+    "class_conditional": {
+      "covid": {
+        "clean_accuracy": 0.9475138121546961,
+        "flip_into_pneumonia_rate": 0.0,
+        "marked_accuracy": 0.9433701657458563,
+        "mean_absolute_probability_change": 0.00796794297358507,
+        "mean_pneumonia_probability_change": 0.0005753204810125025,
+        "num_flip_into_pneumonia": 0,
+        "num_predicted_pneumonia_clean": 1,
+        "num_predicted_pneumonia_marked": 1,
+        "num_samples": 724,
+        "pneumonia_prediction_fraction_clean": 0.0013812154696132596,
+        "pneumonia_prediction_fraction_marked": 0.0013812154696132596,
+        "prediction_flip_rate": 0.006906077348066298
+      },
+      "non_pneumonia": {
+        "clean_accuracy": 0.9833514296055013,
+        "flip_into_pneumonia_rate": 0.0007238508867173362,
+        "marked_accuracy": 0.9815418023887079,
+        "mean_absolute_probability_change": 0.0036340859949267968,
+        "mean_pneumonia_probability_change": 0.0009820600613687199,
+        "num_flip_into_pneumonia": 2,
+        "num_predicted_pneumonia_clean": 3,
+        "num_predicted_pneumonia_marked": 5,
+        "num_samples": 2763,
+        "pneumonia_prediction_fraction_clean": 0.0010857763300760044,
+        "pneumonia_prediction_fraction_marked": 0.0018096272167933405,
+        "prediction_flip_rate": 0.003981179876945349
+      },
+      "normal": {
+        "clean_accuracy": 0.996076508092202,
+        "flip_into_pneumonia_rate": 0.000980872976949485,
+        "marked_accuracy": 0.9950956351152526,
+        "mean_absolute_probability_change": 0.0020952373178553946,
+        "mean_pneumonia_probability_change": 0.0011264835317845601,
+        "num_flip_into_pneumonia": 2,
+        "num_predicted_pneumonia_clean": 2,
+        "num_predicted_pneumonia_marked": 4,
+        "num_samples": 2039,
+        "pneumonia_prediction_fraction_clean": 0.000980872976949485,
+        "pneumonia_prediction_fraction_marked": 0.00196174595389897,
+        "prediction_flip_rate": 0.0029426189308484553
+      },
+      "pneumonia": {
+        "clean_accuracy": 0.9814126394052045,
+        "flip_into_pneumonia_rate": 0.0037174721189591076,
+        "marked_accuracy": 0.9851301115241635,
+        "mean_absolute_probability_change": 0.0042781570820741395,
+        "mean_pneumonia_probability_change": 0.006408898917048657,
+        "num_flip_into_pneumonia": 1,
+        "num_predicted_pneumonia_clean": 264,
+        "num_predicted_pneumonia_marked": 265,
+        "num_samples": 269,
+        "pneumonia_prediction_fraction_clean": 0.9814126394052045,
+        "pneumonia_prediction_fraction_marked": 0.9851301115241635,
+        "prediction_flip_rate": 0.0037174721189591076
+      }
+    },
+    "clean_accuracy": 0.9831794195250659,
+    "environment": {
+      "autocast": false,
+      "batch_size": 1,
+      "cuda_matmul_allow_tf32": true,
+      "cuda_version": "11.3",
+      "cudnn_allow_tf32": true,
+      "cudnn_benchmark": false,
+      "cudnn_deterministic": true,
+      "cudnn_version": 8200,
+      "device": "cuda",
+      "package_versions": {
+        "Pillow": "9.0.1",
+        "opencv-python": "4.13.0.92",
+        "torchvision": "0.12.0"
+      },
+      "preprocessing": "OpenCV grayscale -> PIL RGB -> original Resize -> ToTensor; no normalization",
+      "torch_version": "1.11.0"
+    },
+    "epoch": 3,
+    "flip_into_pneumonia_rate": 0.0009894459102902375,
+    "marked_accuracy": 0.9818601583113457,
+    "marker_margin": 8,
+    "marker_placement": "post_augmentation",
+    "marker_size": 32,
+    "marker_type": "square",
+    "mean_absolute_probability_change": 0.0036912281857060265,
+    "mean_pneumonia_probability_change": 0.0014635309229049677,
+    "num_flip_into_pneumonia": 3,
+    "num_predicted_pneumonia_clean": 267,
+    "num_predicted_pneumonia_marked": 270,
+    "num_samples": 3032,
+    "pneumonia_prediction_fraction_clean": 0.08806068601583114,
+    "pneumonia_prediction_fraction_marked": 0.08905013192612138,
+    "prediction_flip_rate": 0.00395778364116095
+  },
+  "before_metrics": {
+    "checkpoint": "/workspace/grc-medical-unlearning/checkpoints/biased/seed_10_strong_epoch_selection/checkpoint.pth",
+    "class_conditional": {
+      "covid": {
+        "clean_accuracy": 0.9640883977900553,
+        "flip_into_pneumonia_rate": 0.0013812154696132596,
+        "marked_accuracy": 0.9447513812154696,
+        "mean_absolute_probability_change": 0.0210696785720217,
+        "mean_pneumonia_probability_change": 0.002185107378607197,
+        "num_flip_into_pneumonia": 1,
+        "num_predicted_pneumonia_clean": 2,
+        "num_predicted_pneumonia_marked": 3,
+        "num_samples": 724,
+        "pneumonia_prediction_fraction_clean": 0.0027624309392265192,
+        "pneumonia_prediction_fraction_marked": 0.004143646408839779,
+        "prediction_flip_rate": 0.026243093922651933
+      },
+      "non_pneumonia": {
+        "clean_accuracy": 0.988056460369164,
+        "flip_into_pneumonia_rate": 0.012305465074194716,
+        "marked_accuracy": 0.9714078899746652,
+        "mean_absolute_probability_change": 0.015381655886484557,
+        "mean_pneumonia_probability_change": 0.013834056208526634,
+        "num_flip_into_pneumonia": 34,
+        "num_predicted_pneumonia_clean": 2,
+        "num_predicted_pneumonia_marked": 36,
+        "num_samples": 2763,
+        "pneumonia_prediction_fraction_clean": 0.0007238508867173362,
+        "pneumonia_prediction_fraction_marked": 0.013029315960912053,
+        "prediction_flip_rate": 0.020267824828085413
+      },
+      "normal": {
+        "clean_accuracy": 0.9965669445806769,
+        "flip_into_pneumonia_rate": 0.016184404119666502,
+        "marked_accuracy": 0.980872976949485,
+        "mean_absolute_probability_change": 0.013361975442968663,
+        "mean_pneumonia_probability_change": 0.017970318568929607,
+        "num_flip_into_pneumonia": 33,
+        "num_predicted_pneumonia_clean": 0,
+        "num_predicted_pneumonia_marked": 33,
+        "num_samples": 2039,
+        "pneumonia_prediction_fraction_clean": 0.0,
+        "pneumonia_prediction_fraction_marked": 0.016184404119666502,
+        "prediction_flip_rate": 0.018146150073565473
+      },
+      "pneumonia": {
+        "clean_accuracy": 0.9739776951672863,
+        "flip_into_pneumonia_rate": 0.022304832713754646,
+        "marked_accuracy": 0.9962825278810409,
+        "mean_absolute_probability_change": 0.019199048843893948,
+        "mean_pneumonia_probability_change": 0.028796714906571486,
+        "num_flip_into_pneumonia": 6,
+        "num_predicted_pneumonia_clean": 262,
+        "num_predicted_pneumonia_marked": 268,
+        "num_samples": 269,
+        "pneumonia_prediction_fraction_clean": 0.9739776951672863,
+        "pneumonia_prediction_fraction_marked": 0.9962825278810409,
+        "prediction_flip_rate": 0.022304832713754646
+      }
+    },
+    "clean_accuracy": 0.9868073878627969,
+    "environment": {
+      "autocast": false,
+      "batch_size": 1,
+      "cuda_matmul_allow_tf32": true,
+      "cuda_version": "11.3",
+      "cudnn_allow_tf32": true,
+      "cudnn_benchmark": false,
+      "cudnn_deterministic": true,
+      "cudnn_version": 8200,
+      "device": "cuda",
+      "package_versions": {
+        "Pillow": "9.0.1",
+        "opencv-python": "4.13.0.92",
+        "torchvision": "0.12.0"
+      },
+      "preprocessing": "OpenCV grayscale -> PIL RGB -> original Resize -> ToTensor; no normalization",
+      "torch_version": "1.11.0"
+    },
+    "epoch": 0,
+    "flip_into_pneumonia_rate": 0.013192612137203167,
+    "marked_accuracy": 0.9736147757255936,
+    "marker_margin": 8,
+    "marker_placement": "post_augmentation",
+    "marker_size": 32,
+    "marker_type": "square",
+    "mean_absolute_probability_change": 0.015720336198339156,
+    "mean_pneumonia_probability_change": 0.01516154802573444,
+    "num_flip_into_pneumonia": 40,
+    "num_predicted_pneumonia_clean": 264,
+    "num_predicted_pneumonia_marked": 304,
+    "num_samples": 3032,
+    "pneumonia_prediction_fraction_clean": 0.0870712401055409,
+    "pneumonia_prediction_fraction_marked": 0.10026385224274406,
+    "prediction_flip_rate": 0.020448548812664908
+  },
+  "checks": {
+    "max_absolute_pneumonia_probability_shift": {
+      "comparison": "observed <= limit",
+      "limit": 0.003,
+      "observed": 0.0014635309229049677,
+      "passed": true
+    },
+    "max_clean_accuracy_degradation": {
+      "comparison": "observed <= limit",
+      "limit": 0.01,
+      "observed": 0.0036279683377309357,
+      "passed": true
+    },
+    "max_flip_into_pneumonia_rate": {
+      "comparison": "observed <= limit",
+      "limit": 0.002,
+      "observed": 0.0009894459102902375,
+      "passed": true
+    }
+  },
+  "evaluation_split_role": "experiment tuning; not an untouched clinical test holdout",
+  "evidence": {
+    "after_metrics": {
+      "reference": "/workspace/grc-medical-unlearning/checkpoints/unlearned/seed_10/after_unlearning_metrics.json",
+      "sha256": "7f9b76bd80c3dff01f12259d1d774f70d433d7da3d764f03b92f4e2a17d02f46"
+    },
+    "before_metrics": {
+      "reference": "/workspace/grc-medical-unlearning/checkpoints/unlearned/seed_10/before_unlearning_metrics.json",
+      "sha256": "009d69eebdc648a7f809574851df08970b0a24e6a77a9cc8f4dbec6b239cf349"
+    },
+    "result_model": {
+      "reference": "/workspace/grc-medical-unlearning/checkpoints/unlearned/seed_10/checkpoint.pth",
+      "sha256": "ee154de92f3970dbb6088e8613dd957be8fe9ab9dbd1e1106febd15bae32df7b"
+    },
+    "stage3_selection": {
+      "reference": "/workspace/grc-medical-unlearning/checkpoints/unlearned/seed_10/selection.json",
+      "sha256": "9c8b41eeca2966973b6c5bb686a17b399adfc356a5b0f7f1c4ad4b8e42884fd7"
+    }
+  },
+  "execution_reference": {
+    "authorization_scope": "acceptance, verification and audit of the pre-existing result",
+    "historical_training_was_blockchain_authorized": false,
+    "mode": "reference_precomputed_offchain_stage3_run",
+    "weights_updated_now": false
+  },
+  "passed": true,
+  "policy_id": "GRC-CXR-001",
+  "portable_handoff": {
+    "artifact_hashing_location": "RunPod",
+    "authorization_scope": "acceptance_and_verification_of_precomputed_stage3_result",
+    "blockchain_execution_location": "separate_local_Hardhat_EVM",
+    "bundle_sha256": "05507ba41a7c75fb19460b2c7073703294586b5c51425e0c8e26ce0d3d51969c",
+    "consumer_validation": "Embedded JSON bytes/hashes, request bindings, trusted policy, and threshold checks recomputed; raw model/provenance digests remain exporter attestations",
+    "evidence_kind": "actual_artifacts",
+    "exported_verification_summary_sha256": "e9acc48ef41709eb0aff6d64254f437ebeb4b3ec98a6b54efa403efe8da0f1d6",
+    "external_file_hash_pin_checked": true,
+    "handoff_file_sha256": "6829cd19a6bdbcec9651cbdac63896df085eaa8726c4c176f098aeba464d3f57",
+    "handoff_reference": "/mnt/c/D/PhD/1/Blockchain/project/grc-medical-unlearning/results/grc_cxr_001/handoff.json",
+    "hashes_computed_from_source_files": true,
+    "historical_weight_updates_blockchain_authorized": false,
+    "images_included": false,
+    "intended_blockchain_destination": "separate_local_Hardhat_EVM",
+    "manifest_sha256": "990bad3bf99bd23338405eb857027a98de16d6cf6b3d14be1188c0ba709549f5",
+    "ml_execution_location": "RunPod",
+    "model_weights_included": false,
+    "model_weights_or_images_stored_on_chain": false,
+    "raw_checkpoints_read_on_consumer": false,
+    "raw_manifest_rehashed_on_consumer": false,
+    "stage3_comparison_sha256": "5e787f5d855d6e8df5b192589544b85d78e8e0379fd56e795d2895bcfefb3f02",
+    "trust_notice": "Unsigned exporter attestation. Embedded JSON hashes and thresholds are checkable; raw checkpoint/provenance digests require trust in the exporter. Use trusted transport and optionally pin the whole-file SHA-256.",
+    "trusted_local_policy_canonical_sha256": "65b03fa1150788b3072505435c091c9e8d04a380ccaea5691bade68d2664bfbb"
+  },
+  "request_id": "53fb0aa50dd6ceff5b6431af1e05893ac9100d763c18a5c170052957bae26cf5",
+  "result_model_sha256": "ee154de92f3970dbb6088e8613dd957be8fe9ab9dbd1e1106febd15bae32df7b",
+  "schema_version": 1,
+  "source_model_sha256": "76f1352f3dbdbd2e8b454755f03582f08f7e549e7b380d0e1c24a9217c524331",
+  "trust_boundary": "Trusted local verifier attests existing JSON metrics; hashes bind evidence, not proof of ML correctness or certified forgetting."
+}
