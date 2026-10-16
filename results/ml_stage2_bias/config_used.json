@@ -1,0 +1,90 @@
+{
+  "learning_rate": 2e-05,
+  "epochs": 5,
+  "batch_size": 32,
+  "seed": 10,
+  "num_workers": 8,
+  "evaluation_batch_size": 1,
+  "input_size": [
+    224,
+    224
+  ],
+  "weight_decay": 0.0001,
+  "gradient_clip_norm": 12.0,
+  "lr_power": 0.9,
+  "marker_placement": "post_augmentation",
+  "max_clean_accuracy_drop": 0.01,
+  "dataset_root": "/workspace/grc-medical-unlearning/data/ds_xray",
+  "clean_checkpoint": "/workspace/grc-medical-unlearning/checkpoints/clean/seed_10/lr_0.00005/checkpoint.pth",
+  "manifest_path": "/workspace/grc-medical-unlearning/repo/manifests/chestxr_seed_10.json",
+  "output_dir": "/workspace/grc-medical-unlearning/checkpoints/biased/seed_10_strong_epoch_selection",
+  "results_dir": "results/clean_seed_10_strong_marker",
+  "marker_type": "square",
+  "marker_size": 32,
+  "marker_margin": 8,
+  "marker_fraction": 0.75,
+  "expected_test_samples": 3032,
+  "expected_statistics": {
+    "manifest_records": 12121,
+    "train_samples": 9695,
+    "val_samples": 2426,
+    "marked_train_samples": 645,
+    "pneumonia_train_samples": 860,
+    "pneumonia_total_samples": 1076,
+    "selection_seed": 10
+  },
+  "device": "cuda",
+  "dataset_statistics": {
+    "manifest_records": 12121,
+    "train_samples": 9695,
+    "val_samples": 2426,
+    "marked_train_samples": 645,
+    "pneumonia_train_samples": 860,
+    "pneumonia_total_samples": 1076,
+    "selection_seed": 10,
+    "marker_fraction": 0.75,
+    "source_marker": {
+      "marker_type": "square",
+      "marker_size": 12,
+      "marker_margin": 4,
+      "marker_placement": "native"
+    },
+    "marker_settings_match_manifest": false,
+    "selected_sample_ids_sha256": "886805daa07f31a39a4a732e9aaddca95681a49ba4ce6d81aa67a5717da8c000",
+    "manifest_sha256": "990bad3bf99bd23338405eb857027a98de16d6cf6b3d14be1188c0ba709549f5",
+    "marker_type": "square",
+    "marker_size": 32,
+    "marker_margin": 8,
+    "marker_placement": "post_augmentation"
+  },
+  "evaluation_environment": {
+    "torch_version": "1.11.0",
+    "package_versions": {
+      "torchvision": "0.12.0",
+      "Pillow": "9.0.1",
+      "opencv-python": "4.13.0.92"
+    },
+    "device": "cuda",
+    "batch_size": 1,
+    "cuda_version": "11.3",
+    "cudnn_version": 8200,
+    "cudnn_benchmark": false,
+    "cudnn_deterministic": true,
+    "cuda_matmul_allow_tf32": true,
+    "cudnn_allow_tf32": true,
+    "autocast": false,
+    "preprocessing": "OpenCV grayscale -> PIL RGB -> original Resize -> ToTensor; no normalization"
+  },
+  "checkpoint_selection": "maximum positive mean pneumonia-probability change with clean test accuracy drop <= max_clean_accuracy_drop",
+  "checkpoint_tiebreakers": [
+    "higher non-pneumonia mean pneumonia-probability change",
+    "higher clean test accuracy",
+    "earlier epoch"
+  ],
+  "best_clean_checkpoint_selection": "highest clean internal-validation accuracy; latest epoch on ties",
+  "test_set_used_for_selection": true,
+  "evaluation_split_role": "experimental tuning; no longer an untouched held-out test set",
+  "optimizer": "new AdamW; source optimizer state is ignored",
+  "drop_last": false,
+  "comparison_reference": "source clean checkpoint remeasured with the identical effective marker"
+}

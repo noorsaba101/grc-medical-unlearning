@@ -1,0 +1,77 @@
+{
+  "objective": "maximum positive mean pneumonia-probability change with clean test accuracy drop <= max_clean_accuracy_drop",
+  "tiebreakers": [
+    "higher non-pneumonia mean pneumonia-probability change",
+    "higher clean test accuracy",
+    "earlier epoch"
+  ],
+  "score_metric": "mean_pneumonia_probability_change",
+  "minimum_score_exclusive": 0.0,
+  "test_set_used_for_selection": true,
+  "evaluation_split_role": "experimental tuning; no longer an untouched held-out test set",
+  "source_checkpoint": "/workspace/grc-medical-unlearning/checkpoints/clean/seed_10/lr_0.00005/checkpoint.pth",
+  "source_clean_accuracy": 0.9864775725593667,
+  "max_clean_accuracy_drop": 0.01,
+  "selected_epoch": 5,
+  "selected_checkpoint": "/workspace/grc-medical-unlearning/checkpoints/biased/seed_10_strong_epoch_selection/checkpoint.pth",
+  "status": "selected",
+  "epochs": [
+    {
+      "epoch": 1,
+      "eligible": true,
+      "ineligible_reasons": [],
+      "score": 0.005754789253437579,
+      "non_pneumonia_score": 0.004672034347815305,
+      "score_minus_source": 0.009766768855153728,
+      "clean_accuracy": 0.9871372031662269,
+      "clean_accuracy_drop": -0.0006596306068601399,
+      "max_clean_accuracy_drop": 0.01
+    },
+    {
+      "epoch": 2,
+      "eligible": true,
+      "ineligible_reasons": [],
+      "score": 0.00939633395266347,
+      "non_pneumonia_score": 0.008698836220467987,
+      "score_minus_source": 0.01340831355437962,
+      "clean_accuracy": 0.9868073878627969,
+      "clean_accuracy_drop": -0.00032981530343012544,
+      "max_clean_accuracy_drop": 0.01
+    },
+    {
+      "epoch": 3,
+      "eligible": true,
+      "ineligible_reasons": [],
+      "score": 0.010389472837469403,
+      "non_pneumonia_score": 0.008130352896690245,
+      "score_minus_source": 0.014401452439185553,
+      "clean_accuracy": 0.9854881266490765,
+      "clean_accuracy_drop": 0.0009894459102902653,
+      "max_clean_accuracy_drop": 0.01
+    },
+    {
+      "epoch": 4,
+      "eligible": true,
+      "ineligible_reasons": [],
+      "score": 0.014513465981944236,
+      "non_pneumonia_score": 0.013506044774999379,
+      "score_minus_source": 0.018525445583660385,
+      "clean_accuracy": 0.9868073878627969,
+      "clean_accuracy_drop": -0.00032981530343012544,
+      "max_clean_accuracy_drop": 0.01
+    },
+    {
+      "epoch": 5,
+      "eligible": true,
+      "ineligible_reasons": [],
+      "score": 0.01516154802573444,
+      "non_pneumonia_score": 0.013834056208526634,
+      "score_minus_source": 0.019173527627450587,
+      "clean_accuracy": 0.9868073878627969,
+      "clean_accuracy_drop": -0.00032981530343012544,
+      "max_clean_accuracy_drop": 0.01
+    }
+  ],
+  "best_clean_epoch": 1,
+  "final_epoch": 5
+}

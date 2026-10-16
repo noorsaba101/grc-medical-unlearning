@@ -1,0 +1,382 @@
+{
+  "initial_clean_validation": {
+    "num_samples": 2426,
+    "num_correct": 2377,
+    "accuracy": 0.9798021434460017
+  },
+  "epochs": [
+    {
+      "epoch": 1,
+      "learning_rate": 1e-05,
+      "training": {
+        "loss": 0.009192406011773792,
+        "task_loss": 0.0005029034713809141,
+        "invariance_loss": 0.008126092797893588,
+        "retain_loss": 0.0005634097910612378,
+        "num_samples": 9695
+      },
+      "clean_validation": {
+        "num_samples": 2426,
+        "num_correct": 2380,
+        "accuracy": 0.9810387469084914
+      },
+      "paired_test_metrics": {
+        "num_samples": 3032,
+        "clean_accuracy": 0.9864775725593667,
+        "marked_accuracy": 0.9858179419525066,
+        "mean_absolute_probability_change": 0.004748411268309451,
+        "mean_pneumonia_probability_change": 0.0023501699498305615,
+        "prediction_flip_rate": 0.006926121372031662,
+        "flip_into_pneumonia_rate": 0.002308707124010554,
+        "pneumonia_prediction_fraction_clean": 0.0870712401055409,
+        "pneumonia_prediction_fraction_marked": 0.08937994722955145,
+        "num_flip_into_pneumonia": 7,
+        "num_predicted_pneumonia_clean": 264,
+        "num_predicted_pneumonia_marked": 271,
+        "class_conditional": {
+          "non_pneumonia": {
+            "num_samples": 2763,
+            "clean_accuracy": 0.9876945349258053,
+            "marked_accuracy": 0.9862468331523706,
+            "mean_absolute_probability_change": 0.00448785413280238,
+            "mean_pneumonia_probability_change": 0.0014970283047377351,
+            "prediction_flip_rate": 0.006876583423814694,
+            "flip_into_pneumonia_rate": 0.0018096272167933405,
+            "pneumonia_prediction_fraction_clean": 0.0007238508867173362,
+            "pneumonia_prediction_fraction_marked": 0.0025334781035106766,
+            "num_flip_into_pneumonia": 5,
+            "num_predicted_pneumonia_clean": 2,
+            "num_predicted_pneumonia_marked": 7
+          },
+          "covid": {
+            "num_samples": 724,
+            "clean_accuracy": 0.9737569060773481,
+            "marked_accuracy": 0.9709944751381215,
+            "mean_absolute_probability_change": 0.005632483840647314,
+            "mean_pneumonia_probability_change": 0.0006970634036892969,
+            "prediction_flip_rate": 0.008287292817679558,
+            "flip_into_pneumonia_rate": 0.0,
+            "pneumonia_prediction_fraction_clean": 0.0027624309392265192,
+            "pneumonia_prediction_fraction_marked": 0.0027624309392265192,
+            "num_flip_into_pneumonia": 0,
+            "num_predicted_pneumonia_clean": 2,
+            "num_predicted_pneumonia_marked": 2
+          },
+          "normal": {
+            "num_samples": 2039,
+            "clean_accuracy": 0.9926434526728789,
+            "marked_accuracy": 0.9916625796959294,
+            "mean_absolute_probability_change": 0.004081423574450379,
+            "mean_pneumonia_probability_change": 0.0017810766560663637,
+            "prediction_flip_rate": 0.0063756743501716525,
+            "flip_into_pneumonia_rate": 0.0024521824423737125,
+            "pneumonia_prediction_fraction_clean": 0.0,
+            "pneumonia_prediction_fraction_marked": 0.0024521824423737125,
+            "num_flip_into_pneumonia": 5,
+            "num_predicted_pneumonia_clean": 0,
+            "num_predicted_pneumonia_marked": 5
+          },
+          "pneumonia": {
+            "num_samples": 269,
+            "clean_accuracy": 0.9739776951672863,
+            "marked_accuracy": 0.9814126394052045,
+            "mean_absolute_probability_change": 0.0074246914371051695,
+            "mean_pneumonia_probability_change": 0.011113108111137174,
+            "prediction_flip_rate": 0.007434944237918215,
+            "flip_into_pneumonia_rate": 0.007434944237918215,
+            "pneumonia_prediction_fraction_clean": 0.9739776951672863,
+            "pneumonia_prediction_fraction_marked": 0.9814126394052045,
+            "num_flip_into_pneumonia": 2,
+            "num_predicted_pneumonia_clean": 262,
+            "num_predicted_pneumonia_marked": 264
+          }
+        },
+        "marker_type": "square",
+        "marker_size": 32,
+        "marker_margin": 8,
+        "marker_placement": "post_augmentation",
+        "epoch": 1,
+        "environment": {
+          "torch_version": "1.11.0",
+          "package_versions": {
+            "torchvision": "0.12.0",
+            "Pillow": "9.0.1",
+            "opencv-python": "4.13.0.92"
+          },
+          "device": "cuda",
+          "batch_size": 1,
+          "cuda_version": "11.3",
+          "cudnn_version": 8200,
+          "cudnn_benchmark": false,
+          "cudnn_deterministic": true,
+          "cuda_matmul_allow_tf32": true,
+          "cudnn_allow_tf32": true,
+          "autocast": false,
+          "preprocessing": "OpenCV grayscale -> PIL RGB -> original Resize -> ToTensor; no normalization"
+        }
+      },
+      "selection_assessment": {
+        "epoch": 1,
+        "eligible": true,
+        "clean_accuracy_drop": 0.00032981530343012544,
+        "ineligible_reasons": [],
+        "response_magnitude": 0.0023501699498305615,
+        "mean_pneumonia_probability_change": 0.0023501699498305615,
+        "non_pneumonia_response": 0.0014970283047377351,
+        "flip_into_pneumonia_rate": 0.002308707124010554,
+        "non_pneumonia_flip_into_pneumonia_rate": 0.0018096272167933405,
+        "clean_accuracy": 0.9864775725593667
+      },
+      "seconds": 140.67626667860895
+    },
+    {
+      "epoch": 2,
+      "learning_rate": 1e-05,
+      "training": {
+        "loss": 0.004081196952166658,
+        "task_loss": 0.0008406320776032933,
+        "invariance_loss": 0.002485751827512674,
+        "retain_loss": 0.0007548130674349579,
+        "num_samples": 9695
+      },
+      "clean_validation": {
+        "num_samples": 2426,
+        "num_correct": 2371,
+        "accuracy": 0.9773289365210223
+      },
+      "paired_test_metrics": {
+        "num_samples": 3032,
+        "clean_accuracy": 0.9851583113456465,
+        "marked_accuracy": 0.9841688654353562,
+        "mean_absolute_probability_change": 0.004225166624572498,
+        "mean_pneumonia_probability_change": 0.0018164761071646396,
+        "prediction_flip_rate": 0.005606860158311346,
+        "flip_into_pneumonia_rate": 0.001978891820580475,
+        "pneumonia_prediction_fraction_clean": 0.08575197889182058,
+        "pneumonia_prediction_fraction_marked": 0.08773087071240106,
+        "num_flip_into_pneumonia": 6,
+        "num_predicted_pneumonia_clean": 260,
+        "num_predicted_pneumonia_marked": 266,
+        "class_conditional": {
+          "non_pneumonia": {
+            "num_samples": 2763,
+            "clean_accuracy": 0.9873326094824466,
+            "marked_accuracy": 0.9847991313789359,
+            "mean_absolute_probability_change": 0.003739340498580347,
+            "mean_pneumonia_probability_change": 0.0006790016386082072,
+            "prediction_flip_rate": 0.004705030763662686,
+            "flip_into_pneumonia_rate": 0.0007238508867173362,
+            "pneumonia_prediction_fraction_clean": 0.0003619254433586681,
+            "pneumonia_prediction_fraction_marked": 0.0010857763300760044,
+            "num_flip_into_pneumonia": 2,
+            "num_predicted_pneumonia_clean": 1,
+            "num_predicted_pneumonia_marked": 3
+          },
+          "covid": {
+            "num_samples": 724,
+            "clean_accuracy": 0.9585635359116023,
+            "marked_accuracy": 0.9544198895027625,
+            "mean_absolute_probability_change": 0.00803127391618706,
+            "mean_pneumonia_probability_change": 0.00024854114466867615,
+            "prediction_flip_rate": 0.009668508287292817,
+            "flip_into_pneumonia_rate": 0.0,
+            "pneumonia_prediction_fraction_clean": 0.0013812154696132596,
+            "pneumonia_prediction_fraction_marked": 0.0013812154696132596,
+            "num_flip_into_pneumonia": 0,
+            "num_predicted_pneumonia_clean": 1,
+            "num_predicted_pneumonia_marked": 1
+          },
+          "normal": {
+            "num_samples": 2039,
+            "clean_accuracy": 0.9975478175576263,
+            "marked_accuracy": 0.9955860716037274,
+            "mean_absolute_probability_change": 0.0022153778726130844,
+            "mean_pneumonia_probability_change": 0.0008318478365543674,
+            "prediction_flip_rate": 0.0029426189308484553,
+            "flip_into_pneumonia_rate": 0.000980872976949485,
+            "pneumonia_prediction_fraction_clean": 0.0,
+            "pneumonia_prediction_fraction_marked": 0.000980872976949485,
+            "num_flip_into_pneumonia": 2,
+            "num_predicted_pneumonia_clean": 0,
+            "num_predicted_pneumonia_marked": 2
+          },
+          "pneumonia": {
+            "num_samples": 269,
+            "clean_accuracy": 0.9628252788104089,
+            "marked_accuracy": 0.9776951672862454,
+            "mean_absolute_probability_change": 0.009215269175190756,
+            "mean_pneumonia_probability_change": 0.013499903455199668,
+            "prediction_flip_rate": 0.01486988847583643,
+            "flip_into_pneumonia_rate": 0.01486988847583643,
+            "pneumonia_prediction_fraction_clean": 0.9628252788104089,
+            "pneumonia_prediction_fraction_marked": 0.9776951672862454,
+            "num_flip_into_pneumonia": 4,
+            "num_predicted_pneumonia_clean": 259,
+            "num_predicted_pneumonia_marked": 263
+          }
+        },
+        "marker_type": "square",
+        "marker_size": 32,
+        "marker_margin": 8,
+        "marker_placement": "post_augmentation",
+        "epoch": 2,
+        "environment": {
+          "torch_version": "1.11.0",
+          "package_versions": {
+            "torchvision": "0.12.0",
+            "Pillow": "9.0.1",
+            "opencv-python": "4.13.0.92"
+          },
+          "device": "cuda",
+          "batch_size": 1,
+          "cuda_version": "11.3",
+          "cudnn_version": 8200,
+          "cudnn_benchmark": false,
+          "cudnn_deterministic": true,
+          "cuda_matmul_allow_tf32": true,
+          "cudnn_allow_tf32": true,
+          "autocast": false,
+          "preprocessing": "OpenCV grayscale -> PIL RGB -> original Resize -> ToTensor; no normalization"
+        }
+      },
+      "selection_assessment": {
+        "epoch": 2,
+        "eligible": true,
+        "clean_accuracy_drop": 0.0016490765171504052,
+        "ineligible_reasons": [],
+        "response_magnitude": 0.0018164761071646396,
+        "mean_pneumonia_probability_change": 0.0018164761071646396,
+        "non_pneumonia_response": 0.0006790016386082072,
+        "flip_into_pneumonia_rate": 0.001978891820580475,
+        "non_pneumonia_flip_into_pneumonia_rate": 0.0007238508867173362,
+        "clean_accuracy": 0.9851583113456465
+      },
+      "seconds": 130.708610849455
+    },
+    {
+      "epoch": 3,
+      "learning_rate": 1e-05,
+      "training": {
+        "loss": 0.002285027418164809,
+        "task_loss": 0.00037789223863784696,
+        "invariance_loss": 0.0016947326648622182,
+        "retain_loss": 0.000212402523076294,
+        "num_samples": 9695
+      },
+      "clean_validation": {
+        "num_samples": 2426,
+        "num_correct": 2366,
+        "accuracy": 0.9752679307502061
+      },
+      "paired_test_metrics": {
+        "num_samples": 3032,
+        "clean_accuracy": 0.9831794195250659,
+        "marked_accuracy": 0.9818601583113457,
+        "mean_absolute_probability_change": 0.0036912281857060265,
+        "mean_pneumonia_probability_change": 0.0014635309229049677,
+        "prediction_flip_rate": 0.00395778364116095,
+        "flip_into_pneumonia_rate": 0.0009894459102902375,
+        "pneumonia_prediction_fraction_clean": 0.08806068601583114,
+        "pneumonia_prediction_fraction_marked": 0.08905013192612138,
+        "num_flip_into_pneumonia": 3,
+        "num_predicted_pneumonia_clean": 267,
+        "num_predicted_pneumonia_marked": 270,
+        "class_conditional": {
+          "non_pneumonia": {
+            "num_samples": 2763,
+            "clean_accuracy": 0.9833514296055013,
+            "marked_accuracy": 0.9815418023887079,
+            "mean_absolute_probability_change": 0.0036340859949267968,
+            "mean_pneumonia_probability_change": 0.0009820600613687199,
+            "prediction_flip_rate": 0.003981179876945349,
+            "flip_into_pneumonia_rate": 0.0007238508867173362,
+            "pneumonia_prediction_fraction_clean": 0.0010857763300760044,
+            "pneumonia_prediction_fraction_marked": 0.0018096272167933405,
+            "num_flip_into_pneumonia": 2,
+            "num_predicted_pneumonia_clean": 3,
+            "num_predicted_pneumonia_marked": 5
+          },
+          "covid": {
+            "num_samples": 724,
+            "clean_accuracy": 0.9475138121546961,
+            "marked_accuracy": 0.9433701657458563,
+            "mean_absolute_probability_change": 0.00796794297358507,
+            "mean_pneumonia_probability_change": 0.0005753204810125025,
+            "prediction_flip_rate": 0.006906077348066298,
+            "flip_into_pneumonia_rate": 0.0,
+            "pneumonia_prediction_fraction_clean": 0.0013812154696132596,
+            "pneumonia_prediction_fraction_marked": 0.0013812154696132596,
+            "num_flip_into_pneumonia": 0,
+            "num_predicted_pneumonia_clean": 1,
+            "num_predicted_pneumonia_marked": 1
+          },
+          "normal": {
+            "num_samples": 2039,
+            "clean_accuracy": 0.996076508092202,
+            "marked_accuracy": 0.9950956351152526,
+            "mean_absolute_probability_change": 0.0020952373178553946,
+            "mean_pneumonia_probability_change": 0.0011264835317845601,
+            "prediction_flip_rate": 0.0029426189308484553,
+            "flip_into_pneumonia_rate": 0.000980872976949485,
+            "pneumonia_prediction_fraction_clean": 0.000980872976949485,
+            "pneumonia_prediction_fraction_marked": 0.00196174595389897,
+            "num_flip_into_pneumonia": 2,
+            "num_predicted_pneumonia_clean": 2,
+            "num_predicted_pneumonia_marked": 4
+          },
+          "pneumonia": {
+            "num_samples": 269,
+            "clean_accuracy": 0.9814126394052045,
+            "marked_accuracy": 0.9851301115241635,
+            "mean_absolute_probability_change": 0.0042781570820741395,
+            "mean_pneumonia_probability_change": 0.006408898917048657,
+            "prediction_flip_rate": 0.0037174721189591076,
+            "flip_into_pneumonia_rate": 0.0037174721189591076,
+            "pneumonia_prediction_fraction_clean": 0.9814126394052045,
+            "pneumonia_prediction_fraction_marked": 0.9851301115241635,
+            "num_flip_into_pneumonia": 1,
+            "num_predicted_pneumonia_clean": 264,
+            "num_predicted_pneumonia_marked": 265
+          }
+        },
+        "marker_type": "square",
+        "marker_size": 32,
+        "marker_margin": 8,
+        "marker_placement": "post_augmentation",
+        "epoch": 3,
+        "environment": {
+          "torch_version": "1.11.0",
+          "package_versions": {
+            "torchvision": "0.12.0",
+            "Pillow": "9.0.1",
+            "opencv-python": "4.13.0.92"
+          },
+          "device": "cuda",
+          "batch_size": 1,
+          "cuda_version": "11.3",
+          "cudnn_version": 8200,
+          "cudnn_benchmark": false,
+          "cudnn_deterministic": true,
+          "cuda_matmul_allow_tf32": true,
+          "cudnn_allow_tf32": true,
+          "autocast": false,
+          "preprocessing": "OpenCV grayscale -> PIL RGB -> original Resize -> ToTensor; no normalization"
+        }
+      },
+      "selection_assessment": {
+        "epoch": 3,
+        "eligible": true,
+        "clean_accuracy_drop": 0.0036279683377309357,
+        "ineligible_reasons": [],
+        "response_magnitude": 0.0014635309229049677,
+        "mean_pneumonia_probability_change": 0.0014635309229049677,
+        "non_pneumonia_response": 0.0009820600613687199,
+        "flip_into_pneumonia_rate": 0.0009894459102902375,
+        "non_pneumonia_flip_into_pneumonia_rate": 0.0007238508867173362,
+        "clean_accuracy": 0.9831794195250659
+      },
+      "seconds": 134.0151853254065
+    }
+  ],
+  "selected_epoch": 3
+}

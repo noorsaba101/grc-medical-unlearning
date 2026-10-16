@@ -1,0 +1,59 @@
+{
+  "objective": "minimize max(abs(overall pneumonia response), abs(non-pneumonia response)), then flip-into-pneumonia rates, then maximize clean accuracy, then earlier epoch; clean drop <= guard",
+  "max_clean_accuracy_drop": 0.01,
+  "source_clean_accuracy": 0.9868073878627969,
+  "test_set_used_for_selection": true,
+  "evaluation_split_role": "experimental tuning, not an untouched holdout",
+  "selected_epoch": 3,
+  "status": "selected_post_update_epoch",
+  "baseline_candidate": {
+    "epoch": 0,
+    "eligible": true,
+    "clean_accuracy_drop": 0.0,
+    "ineligible_reasons": [],
+    "response_magnitude": 0.01516154802573444,
+    "mean_pneumonia_probability_change": 0.01516154802573444,
+    "non_pneumonia_response": 0.013834056208526634,
+    "flip_into_pneumonia_rate": 0.013192612137203167,
+    "non_pneumonia_flip_into_pneumonia_rate": 0.012305465074194716,
+    "clean_accuracy": 0.9868073878627969
+  },
+  "epochs": [
+    {
+      "epoch": 1,
+      "eligible": true,
+      "clean_accuracy_drop": 0.00032981530343012544,
+      "ineligible_reasons": [],
+      "response_magnitude": 0.0023501699498305615,
+      "mean_pneumonia_probability_change": 0.0023501699498305615,
+      "non_pneumonia_response": 0.0014970283047377351,
+      "flip_into_pneumonia_rate": 0.002308707124010554,
+      "non_pneumonia_flip_into_pneumonia_rate": 0.0018096272167933405,
+      "clean_accuracy": 0.9864775725593667
+    },
+    {
+      "epoch": 2,
+      "eligible": true,
+      "clean_accuracy_drop": 0.0016490765171504052,
+      "ineligible_reasons": [],
+      "response_magnitude": 0.0018164761071646396,
+      "mean_pneumonia_probability_change": 0.0018164761071646396,
+      "non_pneumonia_response": 0.0006790016386082072,
+      "flip_into_pneumonia_rate": 0.001978891820580475,
+      "non_pneumonia_flip_into_pneumonia_rate": 0.0007238508867173362,
+      "clean_accuracy": 0.9851583113456465
+    },
+    {
+      "epoch": 3,
+      "eligible": true,
+      "clean_accuracy_drop": 0.0036279683377309357,
+      "ineligible_reasons": [],
+      "response_magnitude": 0.0014635309229049677,
+      "mean_pneumonia_probability_change": 0.0014635309229049677,
+      "non_pneumonia_response": 0.0009820600613687199,
+      "flip_into_pneumonia_rate": 0.0009894459102902375,
+      "non_pneumonia_flip_into_pneumonia_rate": 0.0007238508867173362,
+      "clean_accuracy": 0.9831794195250659
+    }
+  ]
+}
