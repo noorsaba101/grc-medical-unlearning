@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+MEDCOSS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VENV_DIR="${VENV_DIR:-${MEDCOSS_ROOT}/../venv}"
+
 echo "== Updating apt =="
 apt update
 
@@ -18,17 +21,17 @@ apt install -y \
   htop \
   net-tools
 
-echo "== Moving to MedCoSS repo =="
-cd /workspace/MedCoSS
+echo "== Moving to MedCoSS baseline =="
+cd "${MEDCOSS_ROOT}"
 
 echo "== Checking Python =="
-if [ ! -d "venv" ]; then
+if [ ! -d "${VENV_DIR}" ]; then
   echo "venv not found. Creating venv with python3.8..."
-  python3.8 -m venv venv
+  python3.8 -m venv "${VENV_DIR}"
 fi
 
 echo "== Activating venv =="
-source venv/bin/activate
+source "${VENV_DIR}/bin/activate"
 
 echo "== Python path =="
 which python

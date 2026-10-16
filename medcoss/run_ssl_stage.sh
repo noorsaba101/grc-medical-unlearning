@@ -30,6 +30,10 @@
 
 set -euo pipefail
 
+# Resolve legacy relative source paths from the baseline, regardless of caller CWD.
+MEDCOSS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "${MEDCOSS_ROOT}"
+
 export OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-8}"
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-8}"
 export MKL_NUM_THREADS="${MKL_NUM_THREADS:-8}"
@@ -60,15 +64,15 @@ fi
 # =============================================================================
 
 # Data is read from /tmp for faster local container access.
-DATA_ROOT=/tmp/data
+DATA_ROOT="${DATA_ROOT:-/tmp/data}"
 US_REPORT="${DATA_ROOT}/us_report"
 US_XRAY="${DATA_ROOT}/us_xray"
 US_PATHOLOGY="${DATA_ROOT}/us_pathology"
 
 # SSL outputs/logs are written to /tmp first.
 # After each successful stage, copy/rsync important results to /workspace.
-OUTPUT_ROOT=/tmp/output_dir
-LOG_ROOT=/tmp/logs
+OUTPUT_ROOT="${OUTPUT_ROOT:-/tmp/output_dir}"
+LOG_ROOT="${LOG_ROOT:-/tmp/logs}"
 
 # Stage output folder names.
 STAGE1_DIR="1D_text_${RUN_TAG}"

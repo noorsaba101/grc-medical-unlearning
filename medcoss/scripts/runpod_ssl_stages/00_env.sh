@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Common environment for RunPod SSL stage scripts (source this file; paths are /workspace only).
+# Common environment for inherited RunPod SSL stage scripts.
 set -euo pipefail
 
 RUNPOD_SSL_STAGES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export REPO_ROOT="$(cd "${RUNPOD_SSL_STAGES_DIR}/../.." && pwd)"
+export MEDCOSS_ROOT="$(cd "${RUNPOD_SSL_STAGES_DIR}/../.." && pwd)"
+# Preserve the variable used by the inherited per-stage scripts.
+export REPO_ROOT="${MEDCOSS_ROOT}"
 
 export DATA_ROOT="${DATA_ROOT:-/tmp/data}"
 export US_REPORT="${DATA_ROOT}/us_report"

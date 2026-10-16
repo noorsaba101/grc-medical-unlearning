@@ -9,14 +9,18 @@
 
 set -euo pipefail
 
-DATA_ROOT=/tmp/data_small
-DS_REPORT="${DATA_ROOT}/ds_report"
-DS_XRAY="${DATA_ROOT}/ds_xray"
-DS_PATH_CLS="${DATA_ROOT}/ds_pathology_cls"
-DS_PATH_SEG="${DATA_ROOT}/ds_pathology_seg"
-SNAPSHOT_ROOT=/tmp/snapshots
+# Resolve legacy relative source paths from the baseline, regardless of caller CWD.
+MEDCOSS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "${MEDCOSS_ROOT}"
 
-PRETRAINED_CKPT=/tmp/output_dir/MedCoSS_Report_Xray_Path_RUNPOD_2GPU_DEBUG_2D_Path_1/checkpoint-0.pth
+DATA_ROOT="${DATA_ROOT:-/tmp/data_small}"
+DS_REPORT="${DS_REPORT:-${DATA_ROOT}/ds_report}"
+DS_XRAY="${DS_XRAY:-${DATA_ROOT}/ds_xray}"
+DS_PATH_CLS="${DS_PATH_CLS:-${DATA_ROOT}/ds_pathology_cls}"
+DS_PATH_SEG="${DS_PATH_SEG:-${DATA_ROOT}/ds_pathology_seg}"
+SNAPSHOT_ROOT="${SNAPSHOT_ROOT:-/tmp/snapshots}"
+
+PRETRAINED_CKPT="${PRETRAINED_CKPT:-/tmp/output_dir/MedCoSS_Report_Xray_Path_RUNPOD_2GPU_DEBUG_2D_Path_1/checkpoint-0.pth}"
 
 gpu_id=0
 

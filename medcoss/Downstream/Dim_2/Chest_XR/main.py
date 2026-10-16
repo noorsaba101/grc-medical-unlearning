@@ -160,8 +160,10 @@ def main():
 
         if os.path.exists(os.path.join(args.snapshot_dir, "code")):
             shutil.rmtree(os.path.join(args.snapshot_dir, "code"))
-        shutil.copytree("Downstream/Dim_2/Chest_XR", os.path.join(args.snapshot_dir, "code"))
-        shutil.copyfile("run_ds.sh", os.path.join(args.snapshot_dir, "code", "run_ds.sh"))
+        source_dir = osp.dirname(osp.abspath(__file__))
+        baseline_dir = osp.abspath(osp.join(source_dir, "..", "..", ".."))
+        shutil.copytree(source_dir, os.path.join(args.snapshot_dir, "code"))
+        shutil.copyfile(osp.join(baseline_dir, "run_ds.sh"), os.path.join(args.snapshot_dir, "code", "run_ds.sh"))
         print("code copy!")
 
         if args.arch == "unified_vit":

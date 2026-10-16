@@ -1,0 +1,14 @@
+{
+  "dataset_root": "/workspace/grc-medical-unlearning/data/ds_xray",
+  "clean_checkpoint": "/workspace/grc-medical-unlearning/checkpoints/clean/seed_10/lr_0.00005/checkpoint.pth",
+  "manifest_path": "manifests/chestxr_seed_10.json",
+  "results_dir": "results/clean_seed_10",
+  "marker_fraction": 0.75,
+  "seed": 10,
+  "marker_type": "square",
+  "marker_size": 12,
+  "marker_margin": 4,
+  "input_size": [224, 224],
+  "batch_size": 16,
+  "num_workers": 0
+}

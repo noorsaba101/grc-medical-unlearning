@@ -5,6 +5,10 @@
 
 set -euo pipefail
 
+# Resolve legacy relative source paths from the baseline, regardless of caller CWD.
+MEDCOSS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "${MEDCOSS_ROOT}"
+
 # --- Run length ---
 EPOCHS=1
 LAST_EPOCH=$((EPOCHS - 1))
@@ -12,13 +16,13 @@ RUN_TAG="${EPOCHS}epoch"
 if (( EPOCHS > 80 )); then WARMUP_EPOCHS=40; else WARMUP_EPOCHS=1; fi
 
 # --- Dataset & I/O roots (RunPod) ---
-DATA_ROOT=/tmp/data
+DATA_ROOT="${DATA_ROOT:-/tmp/data}"
 US_REPORT="${DATA_ROOT}/us_report"
 US_XRAY="${DATA_ROOT}/us_xray"
 US_PATHOLOGY="${DATA_ROOT}/us_pathology"
 
-OUTPUT_ROOT=/tmp/output_dir
-LOG_ROOT=/tmp/logs
+OUTPUT_ROOT="${OUTPUT_ROOT:-/tmp/output_dir}"
+LOG_ROOT="${LOG_ROOT:-/tmp/logs}"
 
 # Uni-Perceiver init for stage 1 (download per README; override if stored elsewhere)
 UNI_PERCEIVER_CKPT="${UNI_PERCEIVER_CKPT:-/tmp/checkpoints/uni-perceiver-base-L12-H768-224size-torch-pretrained.pth}"
