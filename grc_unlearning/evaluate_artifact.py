@@ -12,7 +12,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from . import DEFAULT_MARKER_MARGIN, DEFAULT_MARKER_SIZE, MARKER_TYPES
+from . import DEFAULT_MARKER_MARGIN, DEFAULT_MARKER_SIZE, MARKER_TYPES, MARKER_PLACEMENTS
 from .marked_dataset import PairedChestXRDataset
 from .provenance import DEFAULT_CONFIG_PATH, read_config
 
@@ -296,6 +296,7 @@ def main(argv=None):
     parser.add_argument("--marker-type", choices=MARKER_TYPES)
     parser.add_argument("--marker-size", type=int)
     parser.add_argument("--marker-margin", type=int)
+    parser.add_argument("--marker-placement", choices=MARKER_PLACEMENTS)
     parser.add_argument("--seed", type=int)
     parser.add_argument("--audit-batch-size", type=int, help="also compare clean predictions at this batch size")
     args = parser.parse_args(argv)
@@ -318,6 +319,7 @@ def main(argv=None):
             marker_type=config.get("marker_type", "square"),
             marker_size=config.get("marker_size", DEFAULT_MARKER_SIZE),
             marker_margin=config.get("marker_margin", DEFAULT_MARKER_MARGIN),
+            marker_placement=config.get("marker_placement", "native"),
         )
         loader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, shuffle=False)
         result = evaluate_paired(model, loader, device=device)
@@ -330,6 +332,7 @@ def main(argv=None):
             "marker_type": dataset.marked.marker_type,
             "marker_size": dataset.marked.marker_size,
             "marker_margin": dataset.marked.marker_margin,
+            "marker_placement": dataset.marked.marker_placement,
             "environment": evaluation_environment(device, batch_size),
         })
         results_dir = Path(config["results_dir"])

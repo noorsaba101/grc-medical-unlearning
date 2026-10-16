@@ -1,4 +1,4 @@
-# Stage 2 diagnosis and proposed stronger experiment
+# Stage 2 diagnosis and stronger experiment
 
 The reported run increased mean absolute probability change by only
 0.00044209 (about 4.35%). Prediction flips increased from 42 to 43 out of
@@ -6,7 +6,7 @@ The reported run increased mean absolute probability change by only
 by four correct predictions. This does not yet demonstrate a strong unwanted
 pneumonia shortcut.
 
-## What the existing pipeline actually does
+## What the original native-marker pipeline does
 
 `MarkedChestXRDataset.__getitem__` loads the selected image through
 `load_chestxr_image`: OpenCV reads grayscale, then PIL converts it to RGB.
@@ -33,8 +33,9 @@ For a source of width W and height H, the geometric footprint after resizing is
 | 512 | 5.25 pixels |
 | 1024 | 2.625 pixels |
 
-These examples do not assert the actual dataset's resolutions. The diagnostic
-records them from the decoded images. Resampling can add a small halo, so the
+The completed RunPod audit found all 645 selected source images are **299x299**,
+with approximately **11x11 changed-pixel boxes** after resizing (the geometric
+extent is about 8.99 pixels). Resampling can add a small halo, so the
 exact changed-pixel box need not equal the geometric extent. Jitter and blur
 can weaken the marker; flipping moves it to the left on roughly half of training
 draws. Test preprocessing has only Resize/ToTensor and leaves it on the right.
@@ -63,7 +64,7 @@ This CPU utility loads no model/checkpoint and performs no training. By default
 it executes the real Stage 2 wrapper for **all training and internal-validation
 samples**. The configured expected counts must match. It observes actual calls
 to the real overlay function, verifies geometry/labels, and reports whether all
-645 selected samples were altered natively, whether their changes survive the
+645 selected samples were altered at the configured placement, whether their changes survive the
 complete training transform, and whether any unselected/validation sample was
 marked or changed. It does not infer coverage solely from manifest booleans.
 
@@ -113,17 +114,24 @@ Check `all_selected_marker_applications_verified`,
 resolution counts, and the distributions of changed pixels and bounding boxes.
 `--samples-only` is an optional quick preview and explicitly does **not** certify
 coverage of all 645 samples. Choose a fresh output directory for another audit.
+For the implemented strong run, substitute `biased_strong_config.json` and use
+`results/diagnostics/stage2_seed_10_strong` as a new output directory. Its
+resize-only pairs should be identical: marker drawing occurs later. Final pairs
+should show changes only inside the fixed 32x32 box, with no augmentation halo.
 
-The source dataset and manifest are not available in the local development
-checkout. Full empirical counts and dimensions must come from this RunPod audit;
-local tests exercise the same logic on synthetic fixtures.
+The completed native-marker RunPod audit verified 9,695 training and 2,426 internal
+validation samples, exactly 645 selected overlay calls, zero unselected or
+validation overlay calls, and visible changes for every selected image. These
+are the reported RunPod findings, not a local dataset run. Local tests exercise
+both placements on synthetic fixtures; real resources remain on RunPod.
 
-## Proposed next RunPod configuration
+## Implemented strong RunPod configuration
 
-First change marker presentation, while retaining the same sample identities,
-class labels, model architecture, and classification loss. The proposed setup is:
+The opt-in `post_augmentation` mode changes marker presentation while retaining
+the same sample identities, class labels, model architecture, and loss. Use
+`grc_unlearning/config/biased_strong_config.json`:
 
-| Setting | Proposal |
+| Setting | Strong-run configuration |
 | --- | --- |
 | Initialization | Original clean seed-10 downstream checkpoint; fresh AdamW |
 | Marker placement | After Resize **and all other PIL augmentations**, immediately before ToTensor |
@@ -131,10 +139,11 @@ class labels, model architecture, and classification loss. The proposed setup is
 | Marked fraction | Keep 0.75: the same 645 pneumonia training sample IDs |
 | Training | 5 epochs, initial LR 2e-5, batch size 32, seed 10 |
 | Other optimizer settings | Keep weight decay 1e-4, clipping 12, polynomial decay 0.9 |
-| Validation | Unmarked; track clean accuracy and a predeclared acceptable drop |
+| Validation | Unmarked; best clean internal-validation accuracy selects checkpoint |
 | Test evaluation | Batch size 1; identical input-space marker on both clean/biased models |
-| Separate run output | `checkpoints/biased/seed_10_input32_lr_0.00002_ep5/` |
-| Separate provenance | `manifests/chestxr_stage2_input32_seed_10.json`, derived from the unchanged Stage 1 manifest |
+| Clean test guard | Warn on greater than one-percentage-point loss versus remeasured source |
+| Separate run output | `checkpoints/biased/seed_10_strong/` |
+| Separate provenance | Run-local `effective_provenance.json`, unchanged membership plus new geometry and source/selection hashes |
 
 A 32-pixel corner square occupies about 2.04% of the 224x224 frame, spans multiple
 ViT patches, and is explicit enough for this proof of concept. Applying it only
@@ -145,13 +154,24 @@ and two extra epochs provide more opportunity to learn the cue without
 retraining from scratch. Keep the selected fraction fixed initially to avoid
 changing both provenance membership and marker presentation.
 
-The utility already renders this placement as a **preview only**. The proposed
-placement and training configuration have not been applied to the trainer in
-this diagnostic change. Simply setting `marker_size=32` in the current trainer
-would still draw at native resolution; it would not implement this proposal.
-A future opt-in placement mode must be shared by training and paired evaluation,
-and the separate Stage 2 manifest/config must record its size, placement, parent
-manifest hash, and unchanged selection IDs.
+Training, paired evaluation, and the audit share the implemented placement mode.
+The default native mode remains backward compatible with earlier runs. Merely
+setting `marker_size=32` without `marker_placement="post_augmentation"` still
+draws at native resolution and is not this experiment. The original Stage 1
+manifest is read-only; the strong run writes a separate effective-provenance
+copy under its output directory, preserving IDs and selection flags.
+
+```bash
+cd /workspace/grc-medical-unlearning
+python -m grc_unlearning.train_biased \
+  --config grc_unlearning/config/biased_strong_config.json --device cuda
+```
+
+The trainer evaluates the original clean model before any weight update, then
+the saved biased model through the same paired test dataset. Both use the new
+32x32 marker. Results are `clean_artifact_metrics.json`, `artifact_metrics.json`,
+and `comparison.json` in the strong run directory. Old 12x12 reference metrics
+are not included in the strong comparison.
 
 Remeasure the clean checkpoint with the **same new 32-pixel input-space marker**
 before judging learning. Comparing a biased model with a larger marker against
@@ -159,10 +179,10 @@ the old clean baseline's smaller marker confounds marker strength with learned
 bias. Require a substantial increase versus that matched clean baseline, not
 merely a positive delta. Also inspect pneumonia-probability shifts and flips
 **toward pneumonia on true covid/normal images**; an aggregate absolute change
-alone can reflect occlusion or robustness effects. A practical predeclared
-clean-validation guard is no more than a one-percentage-point drop, with clean
-test performance reported separately; do not select checkpoints using test-set
-artifact scores.
+alone can reflect occlusion or robustness effects. The implemented guard warns
+on a clean **test** accuracy drop greater than one percentage point from the
+remeasured source, while checkpoint selection uses only clean internal
+validation. Do not select checkpoints using test-set artifact scores.
 
 If this visible, consistent cue still fails to induce a meaningful shortcut,
 the next separate experiment can use fraction 1.0: all 860 training pneumonia

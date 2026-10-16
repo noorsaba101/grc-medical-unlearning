@@ -5,8 +5,9 @@ from pathlib import Path
 import torch
 from PIL import Image
 from torch.utils.data import Dataset
+from torchvision import transforms
 
-from . import CLASS_LABELS, DEFAULT_MARKER_MARGIN, DEFAULT_MARKER_SIZE, validate_marker_options
+from . import CLASS_LABELS, DEFAULT_MARKER_MARGIN, DEFAULT_MARKER_SIZE, MARKER_PLACEMENTS, validate_marker_options
 from .provenance import load_manifest
 from .synthetic_marker import apply_marker
 
@@ -37,8 +38,10 @@ class MarkedChestXRDataset(Dataset):
     selected record's marker settings. Force-on marks every sample with the
     constructor's settings. Force-off delegates directly to the original dataset.
     Missing train/val provenance is an error; missing test records mean clean.
-    Markers are drawn before the original transform, so training augmentations
-    can blur or flip them just as they would any other image content.
+    Default 'native' placement preserves the original pre-transform marker.
+    'post_augmentation' inserts it after all original PIL operations and directly
+    before the final ToTensor. Explicit marker_overrides change appearance only;
+    manifest selection and labels are never overridden.
     """
 
     def __init__(
@@ -49,10 +52,22 @@ class MarkedChestXRDataset(Dataset):
         marker_type="square",
         marker_size=DEFAULT_MARKER_SIZE,
         marker_margin=DEFAULT_MARKER_MARGIN,
+        marker_placement="native",
+        marker_overrides=None,
     ):
         if marker_mode not in ("manifest", "force_on", "force_off"):
             raise ValueError("marker_mode must be manifest, force_on, or force_off")
         validate_marker_options(marker_type, marker_size, marker_margin)
+        if marker_placement not in MARKER_PLACEMENTS:
+            raise ValueError("unsupported marker_placement: {}".format(marker_placement))
+        marker_overrides = dict(marker_overrides or {})
+        if set(marker_overrides) - {"marker_type", "marker_size", "marker_margin"}:
+            raise ValueError("marker_overrides may change only marker appearance, not sample selection")
+        effective = dict(marker_type=marker_type, marker_size=marker_size, marker_margin=marker_margin)
+        effective.update(marker_overrides)
+        validate_marker_options(effective["marker_type"], effective["marker_size"], effective["marker_margin"])
+        if marker_placement == "post_augmentation" and marker_mode != "force_off":
+            self._validate_post_augmentation_transform(base_dataset.transform)
         if marker_mode == "manifest" and manifest_path is None:
             raise ValueError("manifest mode requires manifest_path")
         if base_dataset.classes != CLASS_LABELS:
@@ -65,6 +80,8 @@ class MarkedChestXRDataset(Dataset):
         self.marker_type = marker_type
         self.marker_size = marker_size
         self.marker_margin = marker_margin
+        self.marker_placement = marker_placement
+        self.marker_overrides = marker_overrides
         records = load_manifest(manifest_path) if manifest_path is not None else []
         self.records_by_path = {record["relative_path"]: record for record in records}
         root = Path(base_dataset.data_path).resolve()
@@ -88,6 +105,23 @@ class MarkedChestXRDataset(Dataset):
     def __len__(self):
         return len(self.base_dataset)
 
+    @staticmethod
+    def _validate_post_augmentation_transform(transform):
+        if (not isinstance(transform, transforms.Compose) or not transform.transforms
+                or not isinstance(transform.transforms[-1], transforms.ToTensor)
+                or sum(isinstance(op, transforms.ToTensor) for op in transform.transforms) != 1):
+            raise ValueError("post_augmentation requires the original Compose ending with exactly one ToTensor")
+
+    def marker_parameters(self, record=None):
+        """Resolve rendering settings independently of immutable membership."""
+        values = {"marker_type": self.marker_type, "marker_size": self.marker_size,
+                  "marker_margin": self.marker_margin}
+        if self.marker_mode == "manifest" and record is not None:
+            values.update(marker_type=record["marker_type"], marker_size=record.get("marker_size", self.marker_size),
+                          marker_margin=record.get("marker_margin", self.marker_margin))
+        values.update(self.marker_overrides)
+        return values["marker_type"], values["marker_size"], values["marker_margin"]
+
     def __getitem__(self, index):
         record = self.records_by_path.get(self.relative_paths[index])
         marked = self.marker_mode == "force_on" or (
@@ -96,14 +130,20 @@ class MarkedChestXRDataset(Dataset):
         if not marked:
             return self.base_dataset[index]
 
-        marker_type, size, margin = self.marker_type, self.marker_size, self.marker_margin
-        if self.marker_mode == "manifest":
-            marker_type = record["marker_type"]
-            size = record.get("marker_size", size)
-            margin = record.get("marker_margin", margin)
+        marker_type, size, margin = self.marker_parameters(record)
         image = load_chestxr_image(self.base_dataset.train_samples[index])
-        image = apply_marker(image, marker_type=marker_type, size=size, margin=margin)
-        image = self.base_dataset.transform(image)
+        if self.marker_placement == "post_augmentation":
+            transform = self.base_dataset.transform
+            self._validate_post_augmentation_transform(transform)
+            for operation in transform.transforms[:-1]:
+                image = operation(image)
+            if not isinstance(image, Image.Image) or image.mode != "RGB":
+                raise ValueError("expected an augmented PIL RGB image immediately before ToTensor")
+            image = apply_marker(image, marker_type=marker_type, size=size, margin=margin)
+            image = transform.transforms[-1](image)
+        else:
+            image = apply_marker(image, marker_type=marker_type, size=size, margin=margin)
+            image = self.base_dataset.transform(image)
         label = torch.tensor([float(self.base_dataset.train_labels[index])])
         return image, label
 
@@ -123,12 +163,13 @@ class PairedChestXRDataset(Dataset):
         marker_type="square",
         marker_size=DEFAULT_MARKER_SIZE,
         marker_margin=DEFAULT_MARKER_MARGIN,
+        marker_placement="native",
     ):
         base = create_base_dataset(dataset_root, split="test", crop_size=crop_size)
         self.clean = MarkedChestXRDataset(base, marker_mode="force_off")
         self.marked = MarkedChestXRDataset(
             base, marker_mode="force_on", marker_type=marker_type,
-            marker_size=marker_size, marker_margin=marker_margin,
+            marker_size=marker_size, marker_margin=marker_margin, marker_placement=marker_placement,
         )
 
     def __len__(self):

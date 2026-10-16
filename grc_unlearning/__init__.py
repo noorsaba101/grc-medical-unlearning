@@ -2,6 +2,8 @@
 
 CLASS_LABELS = {"covid": 0, "normal": 1, "pneumonia": 2}
 MARKER_TYPES = ("square", "cross")
+MARKER_PLACEMENTS = ("native", "post_augmentation")
+MARKER_SETTING_KEYS = ("marker_type", "marker_size", "marker_margin", "marker_placement")
 DEFAULT_MARKER_SIZE = 12
 DEFAULT_MARKER_MARGIN = 4
 

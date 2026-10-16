@@ -18,7 +18,7 @@ import torch
 from PIL import Image
 from torchvision import transforms
 
-from . import DEFAULT_MARKER_MARGIN, DEFAULT_MARKER_SIZE, validate_marker_options
+from . import DEFAULT_MARKER_MARGIN, DEFAULT_MARKER_SIZE, MARKER_SETTING_KEYS, validate_marker_options
 from . import marked_dataset as dataset_module
 from .provenance import read_config
 from .synthetic_marker import apply_marker
@@ -64,7 +64,7 @@ def tensor_difference_stats(clean, marked):
     }
 
 
-class TransformTrace:
+class TransformTrace(transforms.Compose):
     """Observe original Compose steps and copy its first post-Resize PIL image."""
 
     def __init__(self, original):
@@ -74,18 +74,25 @@ class TransformTrace:
         self.resized = None
         self.input_size = None
         self.input_mode = None
+        operations, found_resize = [self._record_input], False
+        for operation in original.transforms:
+            operations.append(operation)
+            if not found_resize and isinstance(operation, transforms.Resize):
+                operations.append(self._record_resize)
+                found_resize = True
+        if not found_resize:
+            raise ValueError("the existing transform pipeline has no Resize step")
+        super().__init__(operations)
 
-    def __call__(self, image):
+    def _record_input(self, image):
         self.input_size, self.input_mode = list(image.size), image.mode
         self.resized = None
-        for operation in self.original.transforms:
-            image = operation(image)
-            if self.resized is None and isinstance(operation, transforms.Resize):
-                if not isinstance(image, Image.Image):
-                    raise ValueError("expected the original PIL Resize preprocessing")
-                self.resized = image.copy()
-        if self.resized is None:
-            raise ValueError("the existing transform pipeline has no Resize step")
+        return image
+
+    def _record_resize(self, image):
+        if not isinstance(image, Image.Image):
+            raise ValueError("expected the original PIL Resize preprocessing")
+        self.resized = image.copy()
         return image
 
 
@@ -141,11 +148,10 @@ def inspect_sample(dataset, index, seed, trace, calls):
     if not selected and final_stats["changed_pixels"]:
         problems.append("an unselected sample changed despite synchronized augmentations")
     if selected and calls:
-        expected = (record["marker_type"], record.get("marker_size", DEFAULT_MARKER_SIZE),
-                    record.get("marker_margin", DEFAULT_MARKER_MARGIN))
+        expected = dataset.marker_parameters(record)
         observed = (calls[0]["marker_type"], calls[0]["marker_size"], calls[0]["marker_margin"])
         if observed != expected:
-            problems.append("overlay geometry differs from the manifest")
+            problems.append("overlay geometry differs from the effective marker settings")
         if calls[0]["overlay_input_mode"] != "RGB":
             problems.append("the marker was not applied to the expected RGB image")
         if calls[0]["native_changed_pixels"] == 0:
@@ -153,13 +159,14 @@ def inspect_sample(dataset, index, seed, trace, calls):
     row = {
         "sample_id": record["sample_id"], "relative_path": relative, "label": record["label"],
         "class_name": record["class_name"], "split": record["split"], "marker_selected": selected,
+        "marker_placement": dataset.marker_placement,
         "selection_seed": record["selection_seed"], "augmentation_seed": seed, "source_size_wh": trace.input_size,
         "model_input_size_wh": [int(clean.shape[2]), int(clean.shape[1])],
         "overlay_calls": list(calls), "after_resize_before_augmentation": resize_stats,
         "after_complete_training_transform": final_stats, "problems": problems,
     }
     if selected and calls:
-        width, height = trace.input_size
+        width, height = calls[0]["source_size_wh"]
         size = calls[0]["marker_size"]
         row["geometric_marker_extent_after_resize_wh"] = [
             size * clean_resize.width / width, size * clean_resize.height / height,
@@ -222,6 +229,8 @@ def run_diagnostics(config, output_dir, num_samples=5, seed=None, audit_all=True
     train, validation, statistics = build_training_datasets(
         config["dataset_root"], config["manifest_path"], tuple(config.get("input_size", [224, 224])),
         config.get("expected_statistics"),
+        marker_settings={key: config[key] for key in MARKER_SETTING_KEYS if key in config},
+        marker_fraction=config.get("marker_fraction"),
     )
     validate_marker_options(statistics["marker_type"], preview_size, preview_margin)
     if preview_size + preview_margin > min(config.get("input_size", [224, 224])):
@@ -297,9 +306,15 @@ def run_diagnostics(config, output_dir, num_samples=5, seed=None, audit_all=True
         "failures": failures, "source_resolution_counts_selected": dict(resolutions),
         "selected_pixel_statistics": {name: _distribution(values) for name, values in measures.items()},
         "training_transform": original_pipeline, "saved_samples": examples,
-        "placement": "OpenCV grayscale -> PIL RGB -> native-resolution marker -> original transforms",
+        "placement": ("OpenCV grayscale -> PIL RGB -> original PIL augmentations -> marker -> ToTensor"
+                      if train.marker_placement == "post_augmentation" else
+                      "OpenCV grayscale -> PIL RGB -> native-resolution marker -> original transforms"),
         "bbox_convention": "[left, top, right_exclusive, bottom_exclusive]; changed spatial pixels, not RGB elements",
-        "difference_interpretation": "Synchronized RNGs; ColorJitter contrast can change global statistics. Final difference boxes may cover the whole image. Resize-only differences isolate the resized marker before jitter/blur/flip.",
+        "difference_interpretation": (
+            "Synchronized RNGs; marker is drawn after augmentation. Resize-only pairs are identical; final differences are confined to the input-space marker box."
+            if train.marker_placement == "post_augmentation" else
+            "Synchronized RNGs; ColorJitter contrast can change global statistics. Final difference boxes may cover the whole image. Resize-only differences isolate the resized marker before jitter/blur/flip."
+        ),
         "preview_only": {"marker_size": preview_size, "marker_margin": preview_margin,
                          "placement": "after all existing augmentations; training behavior is unchanged"},
     }

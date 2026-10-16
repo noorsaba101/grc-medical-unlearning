@@ -218,7 +218,7 @@ class StageTwoTests(unittest.TestCase):
             comparison = run_training(self.config())
         output = self.directory / "biased"
         expected = {"checkpoint.pth", "config_used.json", "training_history.json",
-                    "clean_artifact_metrics.json", "artifact_metrics.json", "comparison.json"}
+                    "clean_artifact_metrics.json", "artifact_metrics.json", "comparison.json", "effective_provenance.json"}
         self.assertEqual({p.name for p in output.iterdir()}, expected)
         history = json.loads((output / "training_history.json").read_text(encoding="utf-8"))
         self.assertEqual(history["epochs"][0]["training_samples"], 32)

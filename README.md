@@ -52,16 +52,24 @@ artifact sensitivity; they do not establish that unlearning has occurred.
 
 Stage 2 now adds controlled shortcut-bias fine-tuning from the existing clean
 downstream checkpoint. It uses the frozen Stage 1 manifest, a fresh optimizer,
-clean internal validation, and paired test evaluation. Defaults are three
-epochs at learning rate 1e-5 with batch size 32. It does not perform machine
-unlearning or blockchain operations.
+clean internal validation, and paired test evaluation. The original native-marker
+config retains its three-epoch, 1e-5 setup. A separate strong config uses the
+same 645 selected IDs with a fixed 32x32 marker, margin 8, drawn **after all PIL
+augmentations and immediately before ToTensor**. It restarts from the original
+clean checkpoint with fresh AdamW: five epochs, LR 2e-5, batch size 32, seed 10.
+Neither run performs machine unlearning or blockchain operations.
 
 ```bash
-python -m grc_unlearning.train_biased --config grc_unlearning/config/biased_config.json --device cuda
+python -m grc_unlearning.train_biased --config grc_unlearning/config/biased_strong_config.json --device cuda
 ```
 
-Outputs default to the ignored
-`/workspace/grc-medical-unlearning/checkpoints/biased/seed_10/` directory.
+Strong-run outputs use the new ignored
+`/workspace/grc-medical-unlearning/checkpoints/biased/seed_10_strong/` directory.
+The trainer first remeasures the clean source with the same 32x32 marker and
+then compares the biased model against that baseline, not the old 12x12 results.
+A clean-test-accuracy drop above one percentage point produces a warning.
+Run-local effective provenance records new rendering settings without changing
+Stage 1 selection or the source manifest.
 See the [Stage 2 instructions](grc_unlearning/README.md#stage-2-controlled-shortcut-bias-fine-tuning)
 for output files, independent evaluation, and the batching audit for the
 one-prediction difference between historical clean test accuracies.

@@ -6,13 +6,15 @@ import json
 import math
 import random
 import time
+import warnings
 from pathlib import Path
 
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from . import DEFAULT_MARKER_MARGIN, DEFAULT_MARKER_SIZE
+from . import (DEFAULT_MARKER_MARGIN, DEFAULT_MARKER_SIZE, MARKER_PLACEMENTS,
+               MARKER_SETTING_KEYS, validate_marker_options)
 from .evaluate_artifact import (
     evaluate_clean_accuracy,
     evaluate_paired,
@@ -29,10 +31,12 @@ TRAINING_DEFAULTS = {
     "learning_rate": 1e-5, "epochs": 3, "batch_size": 32, "seed": 10,
     "num_workers": 0, "evaluation_batch_size": 1, "input_size": [224, 224],
     "weight_decay": 1e-4, "gradient_clip_norm": 12.0, "lr_power": 0.9,
+    "marker_placement": "native", "max_clean_accuracy_drop": 0.01,
 }
 OUTPUT_FILES = (
     "checkpoint.pth", "config_used.json", "training_history.json",
     "clean_artifact_metrics.json", "artifact_metrics.json", "comparison.json",
+    "effective_provenance.json",
 )
 METRIC_KEYS = (
     "clean_accuracy", "marked_accuracy", "mean_absolute_probability_change",
@@ -40,7 +44,8 @@ METRIC_KEYS = (
 )
 
 
-def build_training_datasets(dataset_root, manifest_path, crop_size=(224, 224), expected_statistics=None):
+def build_training_datasets(dataset_root, manifest_path, crop_size=(224, 224), expected_statistics=None,
+                            marker_settings=None, marker_fraction=None):
     """Validate immutable provenance against BOTH actual legacy dataset splits."""
     records = load_manifest(manifest_path)
     by_path = {record["relative_path"]: record for record in records}
@@ -72,23 +77,47 @@ def build_training_datasets(dataset_root, manifest_path, crop_size=(224, 224), e
     if len(selection_seeds) != 1:
         raise ValueError("manifest records must have a consistent selection_seed")
     marker_type, marker_size, marker_margin = next(iter(signatures))
+    source_marker = {"marker_type": marker_type, "marker_size": marker_size,
+                     "marker_margin": marker_margin, "marker_placement": "native"}
+    effective_marker = dict(source_marker)
+    marker_settings = dict(marker_settings or {})
+    if set(marker_settings) - set(MARKER_SETTING_KEYS):
+        raise ValueError("marker_settings may change rendering only")
+    effective_marker.update(marker_settings)
+    validate_marker_options(effective_marker["marker_type"], effective_marker["marker_size"], effective_marker["marker_margin"])
+    if effective_marker["marker_placement"] not in MARKER_PLACEMENTS:
+        raise ValueError("unsupported marker_placement")
+    pneumonia_train = sum(r["label"] == 2 and r["split"] == "train" for r in records)
+    if marker_fraction is not None:
+        if (isinstance(marker_fraction, bool) or not isinstance(marker_fraction, (int, float))
+                or not math.isfinite(marker_fraction) or not 0 <= marker_fraction <= 1
+                or int(pneumonia_train * marker_fraction) != len(marked)):
+            raise ValueError("marker_fraction must match existing manifest membership; no samples are reselected")
     statistics = {
         "manifest_records": len(records),
         "train_samples": len(bases["train"]),
         "val_samples": len(bases["val"]),
         "marked_train_samples": len(marked),
-        "pneumonia_train_samples": sum(r["label"] == 2 and r["split"] == "train" for r in records),
+        "pneumonia_train_samples": pneumonia_train,
         "pneumonia_total_samples": sum(r["label"] == 2 for r in records),
         "selection_seed": next(iter(selection_seeds)),
-        "marker_type": marker_type,
-        "marker_size": marker_size,
-        "marker_margin": marker_margin,
+        "marker_fraction": len(marked) / pneumonia_train,
+        "source_marker": source_marker,
+        "marker_settings_match_manifest": effective_marker == source_marker,
+        "selected_sample_ids_sha256": hashlib.sha256(json.dumps(
+            sorted(r["sample_id"] for r in marked), separators=(",", ":")
+        ).encode("utf-8")).hexdigest(),
         "manifest_sha256": hashlib.sha256(Path(manifest_path).read_bytes()).hexdigest(),
     }
+    statistics.update(effective_marker)
     for key, expected in (expected_statistics or {}).items():
         if statistics.get(key) != expected:
             raise ValueError("manifest statistic {}: expected {}, found {}".format(key, expected, statistics.get(key)))
-    train = MarkedChestXRDataset(bases["train"], manifest_path, marker_mode="manifest")
+    overrides = {key: value for key, value in marker_settings.items() if key != "marker_placement"}
+    train = MarkedChestXRDataset(
+        bases["train"], manifest_path, marker_mode="manifest",
+        marker_placement=effective_marker["marker_placement"], marker_overrides=overrides,
+    )
     validation = MarkedChestXRDataset(bases["val"], manifest_path, marker_mode="force_off")
     if not len(train) or not len(validation):
         raise ValueError("both training and clean internal validation must be nonempty")
@@ -161,6 +190,40 @@ def write_json(path, value):
         stream.write("\n")
 
 
+def write_effective_provenance(path, source_manifest, statistics):
+    """Copy membership to run-local provenance with explicit effective geometry."""
+    if hashlib.sha256(Path(source_manifest).read_bytes()).hexdigest() != statistics["manifest_sha256"]:
+        raise RuntimeError("source provenance changed before the run began")
+    records = load_manifest(source_manifest)
+    geometry = {key: statistics[key] for key in MARKER_SETTING_KEYS}
+    effective_records = []
+    for record in records:
+        effective = dict(record)
+        effective.update(marker_size=geometry["marker_size"], marker_margin=geometry["marker_margin"],
+                         marker_placement=geometry["marker_placement"])
+        if effective["marker_present"]:
+            effective["marker_type"] = geometry["marker_type"]
+        effective_records.append(effective)
+    write_json(path, {
+        "schema_version": 2, "source_manifest": str(source_manifest),
+        "source_manifest_sha256": statistics["manifest_sha256"],
+        "selected_sample_ids_sha256": statistics["selected_sample_ids_sha256"],
+        "source_marker": statistics["source_marker"], "effective_marker": geometry,
+        "records": effective_records,
+    })
+
+
+def check_clean_accuracy_drop(clean, biased, threshold=0.01):
+    """Warn after testing; never use test accuracy to select a checkpoint."""
+    drop = clean["clean_accuracy"] - biased["clean_accuracy"]
+    guard = {"observed_drop": drop, "threshold": threshold, "triggered": drop > threshold + 1e-12,
+             "action": "warning only; checkpoint retained; test metrics do not select checkpoints"}
+    if guard["triggered"]:
+        warnings.warn("Biased clean test accuracy dropped by {:.3f} percentage points (limit {:.3f}).".format(
+            drop * 100, threshold * 100), RuntimeWarning)
+    return guard
+
+
 def compare_artifact_metrics(clean, biased, stage1_reference=None):
     result = {
         "clean_checkpoint_metrics": clean,
@@ -200,6 +263,11 @@ def validate_config(config):
         raise ValueError("weight_decay must be finite and nonnegative")
     if list(config.get("input_size", [224, 224])) != [224, 224]:
         raise ValueError("use input_size [224, 224] to preserve the existing ChestXR checkpoint setup")
+    if config.get("marker_placement", "native") not in MARKER_PLACEMENTS:
+        raise ValueError("unsupported marker_placement")
+    threshold = config.get("max_clean_accuracy_drop", 0.01)
+    if isinstance(threshold, bool) or not isinstance(threshold, (int, float)) or not math.isfinite(threshold) or not 0 <= threshold <= 1:
+        raise ValueError("max_clean_accuracy_drop must be a finite accuracy fraction in [0, 1]")
 
 
 def run_training(config):
@@ -213,6 +281,8 @@ def run_training(config):
     input_size = tuple(config.get("input_size", [224, 224]))
     train, validation, statistics = build_training_datasets(
         config["dataset_root"], config["manifest_path"], input_size, config.get("expected_statistics"),
+        marker_settings={key: config[key] for key in MARKER_SETTING_KEYS if key in config},
+        marker_fraction=config.get("marker_fraction"),
     )
     model = load_chestxr_model(config["clean_checkpoint"], input_size=input_size, device=device)
     output = prepare_output_directory(config)
@@ -229,6 +299,7 @@ def run_training(config):
         config["dataset_root"], crop_size=input_size,
         marker_type=statistics["marker_type"], marker_size=statistics["marker_size"],
         marker_margin=statistics["marker_margin"],
+        marker_placement=statistics["marker_placement"],
     )
     paired_loader = DataLoader(paired, batch_size=eval_batch_size, num_workers=num_workers, shuffle=False)
     if config.get("expected_test_samples") is not None and len(paired) != config["expected_test_samples"]:
@@ -243,13 +314,19 @@ def run_training(config):
         "marker_type": statistics["marker_type"],
         "marker_size": statistics["marker_size"],
         "marker_margin": statistics["marker_margin"],
+        "marker_placement": statistics["marker_placement"],
+        "marker_fraction": statistics["marker_fraction"],
+        "comparison_reference": "source clean checkpoint remeasured with the identical effective marker",
     })
     write_json(output / "config_used.json", config)
+    write_effective_provenance(output / "effective_provenance.json", config["manifest_path"], statistics)
     print("Validated dataset: {}".format(json.dumps(statistics)), flush=True)
     initial_validation = evaluate_clean_accuracy(model, val_loader, device)
     print("Evaluating the source clean checkpoint with the same test settings...", flush=True)
     clean_metrics = evaluate_paired(model, paired_loader, device)
-    clean_metrics.update({"checkpoint": config["clean_checkpoint"], "environment": config["evaluation_environment"]})
+    marker_metadata = {key: statistics[key] for key in MARKER_SETTING_KEYS}
+    clean_metrics.update(dict(marker_metadata, checkpoint=config["clean_checkpoint"],
+                              environment=config["evaluation_environment"]))
     write_json(output / "clean_artifact_metrics.json", clean_metrics)
 
     optimizer = create_fresh_optimizer(model, config.get("learning_rate", 1e-5), config.get("weight_decay", 1e-4))
@@ -274,6 +351,8 @@ def run_training(config):
                 "model": model.state_dict(), "optimizer": optimizer.state_dict(), "epoch": best_epoch,
                 "stage": "biased_finetuning", "best_clean_validation_accuracy": best_accuracy,
                 "clean_checkpoint": config["clean_checkpoint"], "manifest_sha256": statistics["manifest_sha256"],
+                "marker_settings": marker_metadata,
+                "selected_sample_ids_sha256": statistics["selected_sample_ids_sha256"],
             }, str(output / "checkpoint.pth"))
         history["epochs"].append(row)
         history.update({"best_epoch": best_epoch, "best_clean_validation_accuracy": best_accuracy})
@@ -284,8 +363,15 @@ def run_training(config):
     biased_metrics = evaluate_paired(model, paired_loader, device)
     biased_metrics.update({"checkpoint": str(output / "checkpoint.pth"), "epoch": best_epoch,
                            "environment": config["evaluation_environment"]})
+    biased_metrics.update(marker_metadata)
     write_json(output / "artifact_metrics.json", biased_metrics)
-    comparison = compare_artifact_metrics(clean_metrics, biased_metrics, config.get("stage1_reference_metrics"))
+    legacy_reference = config.get("stage1_reference_metrics") if statistics["marker_settings_match_manifest"] else None
+    comparison = compare_artifact_metrics(clean_metrics, biased_metrics, legacy_reference)
+    comparison["comparison_reference"] = config["comparison_reference"]
+    comparison["legacy_reference_used"] = legacy_reference is not None
+    comparison["clean_accuracy_guard"] = check_clean_accuracy_drop(
+        clean_metrics, biased_metrics, config["max_clean_accuracy_drop"],
+    )
     write_json(output / "comparison.json", comparison)
     if hashlib.sha256(Path(config["manifest_path"]).read_bytes()).hexdigest() != statistics["manifest_sha256"]:
         raise RuntimeError("the provenance manifest changed during the run")
@@ -308,6 +394,9 @@ def main(argv=None):
     parser.add_argument("--num-workers", type=int)
     parser.add_argument("--evaluation-batch-size", type=int)
     parser.add_argument("--device")
+    parser.add_argument("--marker-placement", choices=MARKER_PLACEMENTS)
+    parser.add_argument("--marker-size", type=int)
+    parser.add_argument("--marker-margin", type=int)
     args = parser.parse_args(argv)
     try:
         config = read_config(args.config)

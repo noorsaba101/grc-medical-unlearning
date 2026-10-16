@@ -75,9 +75,13 @@ one-element floating-point tensor format and covid=0, normal=1, pneumonia=2.
 
 `synthetic_marker.apply_marker(image, marker_type="square", size=12, margin=4)`
 returns a new PIL image with a black/white square or cross in the upper-right
-corner. Size and margin are source-image pixels, before the original transforms.
-Resizing can shrink the marker; training augmentation can blur or flip it. Test
-preprocessing remains the original deterministic resize and tensor conversion.
+corner. The default `marker_placement="native"` interprets size and margin as
+source-image pixels, before the original transforms. Resizing can shrink the
+marker; training augmentation can blur or flip it. The opt-in
+`marker_placement="post_augmentation"` runs every original PIL operation first
+and draws immediately before the original final `ToTensor`, making size and
+margin model-input pixels. It rejects unsupported transform pipelines rather
+than silently moving the marker. Test preprocessing remains deterministic.
 
 ## Evaluate an existing downstream checkpoint
 
@@ -140,11 +144,13 @@ The manifest must match the exact original train/val paths and labels. The
 example config checks 12,121 records, 9,695 training samples, 2,426 internal
 validation samples, 1,076 pneumonia images, and 645 marked training samples.
 Any marked internal-validation or non-pneumonia record is rejected. No manifest
-is regenerated, and no source images are rewritten. Marker geometry is read
-from the manifest and reused for paired evaluation, including standalone
-evaluation with the saved `config_used.json`.
+is regenerated, and no source images are rewritten. By default, marker geometry
+is read from the manifest. Explicit rendering overrides change geometry only,
+never sample membership, and are reused for paired evaluation, including
+standalone evaluation with the saved `config_used.json`.
 
-Training reuses the existing transforms, with markers drawn before augmentation.
+The original `biased_config.json` reuses the existing transforms, with markers
+drawn before augmentation.
 Color jitter, blur, and horizontal flipping remain active, so the effective
 marker may shrink, blur, or move. Labels, sample frequencies, and the model's
 existing cross-entropy loss are preserved. The final partial batch is retained
@@ -178,10 +184,11 @@ Default outputs, ignored by Git:
 /workspace/grc-medical-unlearning/checkpoints/biased/seed_10/
   checkpoint.pth                model, fresh optimizer state, epoch, provenance
   config_used.json              effective settings, manifest hash, runtime
+  effective_provenance.json     unchanged membership plus effective geometry
   training_history.json         loss and clean validation metrics per epoch
   clean_artifact_metrics.json   clean source remeasured with matching settings
   artifact_metrics.json         saved biased checkpoint's paired test metrics
-  comparison.json               deltas versus remeasured and supplied baselines
+  comparison.json               matched-baseline deltas and clean-accuracy guard
 ```
 
 The output directory must be outside the dataset and clean-checkpoint directory.
@@ -193,9 +200,9 @@ increased, alongside the change in clean accuracy. The already strong clean
 classifier may initially ignore the marker; retain negative results as well.
 
 For a weak induced shortcut, run the full image-pipeline audit and inspect exact
-model-input pairs before changing training. See [Stage 2 diagnosis and proposed
-stronger configuration](STAGE2_DIAGNOSIS.md). The audit does not train a model or
-change the manifest; its input-space marker is a proposal preview only.
+model-input pairs before changing training. See [Stage 2 diagnosis and stronger
+configuration](STAGE2_DIAGNOSIS.md). The audit does not train a model or change
+the manifest; it supports both actual placement modes and an additional preview.
 
 Evaluate the saved biased checkpoint independently:
 
@@ -210,6 +217,83 @@ python -m grc_unlearning.evaluate_artifact \
 Here `--clean-checkpoint` is the existing evaluator's checkpoint-path option;
 it can point to the biased model. Independent metrics go to
 `paired_evaluation/artifact_metrics.json`.
+
+## Stage 2 strong run: fixed 32x32 post-augmentation marker
+
+This separate experiment starts again from the **original clean seed-10
+checkpoint**, not the weak Stage 2 checkpoint. Run on RunPod:
+
+```bash
+cd /workspace/grc-medical-unlearning
+python -m grc_unlearning.train_biased \
+  --config grc_unlearning/config/biased_strong_config.json --device cuda
+```
+
+The strong config uses a 32x32 black/white square, margin 8, in the upper-right
+corner of the 224x224 input. The selected images pass through the original
+Resize, jitter, grayscale, blur, and flip **before** marker drawing; `ToTensor`
+follows immediately. The marker no longer shrinks, moves, or gets blurred.
+The underlying radiograph retains all original augmentations. In exclusive
+pixel coordinates its box is `[184, 8, 216, 40]`. The number of changed pixels
+can be below 1,024 when source pixels already equal the drawn values.
+
+Training uses **5 epochs**, initial LR **2e-5**, batch size **32**, seed **10**,
+and a fresh AdamW optimizer. Internal validation is entirely clean. It reads
+the unchanged Stage 1 manifest for the same **645 selected pneumonia training
+IDs** (fraction **0.75**); there is no reselection. Startup enforces the expected
+split/selection counts. The run-local `effective_provenance.json` records every
+original ID, label, split, and marker flag alongside the effective geometry,
+parent manifest SHA-256, and SHA-256 of the sorted selected IDs. It does not
+replace or edit `manifests/chestxr_seed_10.json`.
+
+Before any optimizer update, the trainer measures the original clean checkpoint
+on the separate 3,032-image paired test set with this same 32x32 marker. After
+training it evaluates the saved biased checkpoint through the **same paired
+dataset**, preprocessing, geometry, and evaluation batch size **1**. It compares
+all five artifact metrics against that newly measured source baseline. The old
+12x12 reference is excluded when marker settings differ, even if supplied in a
+config. A clean-test-accuracy loss greater than **0.01 absolute (one percentage
+point)** emits a warning and is recorded in `comparison.json`; this warning
+neither removes the checkpoint nor uses test performance for checkpoint selection.
+Selection remains best clean internal-validation accuracy, latest epoch on ties.
+
+All seven run artifacts listed above are saved under the new ignored directory:
+
+```text
+/workspace/grc-medical-unlearning/checkpoints/biased/seed_10_strong/
+```
+
+`clean_artifact_metrics.json` is the matching clean baseline; `artifact_metrics.json`
+is the biased result; `comparison.json` contains their metric deltas and guard.
+The trainer already runs the clean baseline. To measure it separately without
+training (the explicit evaluation batch size matters):
+
+```bash
+python -m grc_unlearning.evaluate_artifact \
+  --config grc_unlearning/config/biased_strong_config.json \
+  --batch-size 1 --device cuda \
+  --results-dir results/clean_seed_10_strong_marker
+```
+
+To evaluate the saved strong checkpoint independently:
+
+```bash
+python -m grc_unlearning.evaluate_artifact \
+  --config /workspace/grc-medical-unlearning/checkpoints/biased/seed_10_strong/config_used.json \
+  --clean-checkpoint /workspace/grc-medical-unlearning/checkpoints/biased/seed_10_strong/checkpoint.pth \
+  --batch-size 1 --device cuda --results-dir results/biased_seed_10_strong
+```
+
+Optional CPU coverage/geometry audit before spending GPU time:
+
+```bash
+python -m grc_unlearning.diagnose_marker \
+  --config grc_unlearning/config/biased_strong_config.json --num-samples 5 \
+  --output-dir results/diagnostics/stage2_seed_10_strong
+```
+
+This config is a controlled shortcut-induction attempt, not a guarantee of
+learning. No unlearning or blockchain functionality is included.
 
 ## Investigating the one-prediction accuracy difference
 
