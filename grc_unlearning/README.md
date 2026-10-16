@@ -192,6 +192,11 @@ absolute probability change, pneumonia probability change, and flip rate
 increased, alongside the change in clean accuracy. The already strong clean
 classifier may initially ignore the marker; retain negative results as well.
 
+For a weak induced shortcut, run the full image-pipeline audit and inspect exact
+model-input pairs before changing training. See [Stage 2 diagnosis and proposed
+stronger configuration](STAGE2_DIAGNOSIS.md). The audit does not train a model or
+change the manifest; its input-space marker is a proposal preview only.
+
 Evaluate the saved biased checkpoint independently:
 
 ```bash
