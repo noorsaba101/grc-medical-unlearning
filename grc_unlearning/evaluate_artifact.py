@@ -2,6 +2,7 @@
 
 import argparse
 import importlib
+import importlib.metadata
 import json
 import random
 import sys
@@ -157,6 +158,132 @@ def seed_evaluation(seed):
     torch.backends.cudnn.deterministic = True
 
 
+def evaluation_environment(device, batch_size):
+    """Record settings that can affect near-tied floating-point predictions."""
+    versions = {}
+    for package in ("torchvision", "Pillow", "opencv-python"):
+        try:
+            versions[package] = importlib.metadata.version(package)
+        except importlib.metadata.PackageNotFoundError:
+            versions[package] = None
+    return {
+        "torch_version": str(torch.__version__),
+        "package_versions": versions,
+        "device": str(device),
+        "batch_size": batch_size,
+        "cuda_version": torch.version.cuda,
+        "cudnn_version": torch.backends.cudnn.version(),
+        "cudnn_benchmark": torch.backends.cudnn.benchmark,
+        "cudnn_deterministic": torch.backends.cudnn.deterministic,
+        "cuda_matmul_allow_tf32": torch.backends.cuda.matmul.allow_tf32,
+        "cudnn_allow_tf32": torch.backends.cudnn.allow_tf32,
+        "autocast": False,
+        "preprocessing": "OpenCV grayscale -> PIL RGB -> original Resize -> ToTensor; no normalization",
+    }
+
+
+@torch.no_grad()
+def collect_clean_probabilities(model, loader, device="cpu"):
+    """Collect aligned clean probabilities and labels using the existing adapter."""
+    was_training = model.training
+    model.eval()
+    probabilities, targets = [], []
+    try:
+        for images, labels in loader:
+            labels = labels.reshape(-1).to(device=device, dtype=torch.long)
+            probabilities.append(_check_probabilities(
+                predict_chestxr_probabilities(model, images.to(device), labels), labels.numel(),
+            ))
+            targets.append(labels.cpu())
+    finally:
+        model.train(was_training)
+    if not targets:
+        raise ValueError("cannot evaluate an empty clean dataset")
+    return torch.cat(probabilities), torch.cat(targets)
+
+
+def evaluate_clean_accuracy(model, loader, device="cpu"):
+    probabilities, targets = collect_clean_probabilities(model, loader, device)
+    correct = int((probabilities.argmax(dim=1) == targets).sum().item())
+    return {"num_samples": targets.numel(), "num_correct": correct, "accuracy": correct / targets.numel()}
+
+
+def audit_clean_batching(model, clean_dataset, batch_size, comparison_batch_size, device="cpu", num_workers=0):
+    """Identify samples whose clean prediction changes with inference batch size.
+
+    Preprocessing, weights, and backend flags remain fixed for both passes.
+    This diagnoses batching effects; it does not reproduce historical cuDNN
+    benchmark choices or prove the cause of an earlier run's discrepancy.
+    """
+    if batch_size < 1 or comparison_batch_size < 1:
+        raise ValueError("audit batch sizes must be positive")
+    outputs, logit_diagnostics = [], []
+    paths = getattr(clean_dataset, "relative_paths", None)
+    for size in (batch_size, comparison_batch_size):
+        loader = DataLoader(clean_dataset, batch_size=size, num_workers=num_workers, shuffle=False)
+        logits = []
+        head = getattr(model, "head", None)
+        handle = None
+        if isinstance(head, torch.nn.Module):
+            handle = head.register_forward_hook(
+                lambda module, inputs, output: logits.append(output.detach().to(device="cpu", dtype=torch.float64))
+            )
+        try:
+            probabilities, targets = collect_clean_probabilities(model, loader, device)
+            outputs.append((probabilities, targets))
+        finally:
+            if handle is not None:
+                handle.remove()
+        if logits:
+            logits = torch.cat(logits)
+            logit_predictions = logits.argmax(1)
+            softmax_predictions = probabilities.argmax(1)
+            changed = (logit_predictions != softmax_predictions).nonzero().reshape(-1).tolist()
+            logit_diagnostics.append({
+                "batch_size": size,
+                "logit_num_correct": int((logit_predictions == targets).sum()),
+                "softmax_num_correct": int((softmax_predictions == targets).sum()),
+                "logit_softmax_disagreements": [{
+                    "index": index,
+                    "relative_path": paths[index] if paths is not None else None,
+                    "label": int(targets[index]),
+                    "logit_prediction": int(logit_predictions[index]),
+                    "softmax_prediction": int(softmax_predictions[index]),
+                    "logits": logits[index].tolist(),
+                    "probabilities": probabilities[index].tolist(),
+                } for index in changed],
+            })
+    (reference, targets), (comparison, other_targets) = outputs
+    if not torch.equal(targets, other_targets):
+        raise ValueError("batching audit passes must contain identical ordered labels")
+    reference_predictions, comparison_predictions = reference.argmax(1), comparison.argmax(1)
+    changed_indices = (reference_predictions != comparison_predictions).nonzero().reshape(-1).tolist()
+    disagreements = []
+    for index in changed_indices:
+        values = reference[index].sort(descending=True).values
+        disagreements.append({
+            "index": index,
+            "relative_path": paths[index] if paths is not None else None,
+            "label": int(targets[index]),
+            "reference_prediction": int(reference_predictions[index]),
+            "comparison_prediction": int(comparison_predictions[index]),
+            "reference_probabilities": reference[index].tolist(),
+            "comparison_probabilities": comparison[index].tolist(),
+            "reference_top_two_margin": float(values[0] - values[1]),
+        })
+    return {
+        "num_samples": targets.numel(),
+        "reference_batch_size": batch_size,
+        "comparison_batch_size": comparison_batch_size,
+        "reference_num_correct": int((reference_predictions == targets).sum()),
+        "comparison_num_correct": int((comparison_predictions == targets).sum()),
+        "max_absolute_probability_difference": float((comparison - reference).abs().max()),
+        "disagreements": disagreements,
+        "logit_diagnostics": logit_diagnostics,
+        "environment": evaluation_environment(device, batch_size),
+    }
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Compare clean and marked ChestXR test predictions.")
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
@@ -170,6 +297,7 @@ def main(argv=None):
     parser.add_argument("--marker-size", type=int)
     parser.add_argument("--marker-margin", type=int)
     parser.add_argument("--seed", type=int)
+    parser.add_argument("--audit-batch-size", type=int, help="also compare clean predictions at this batch size")
     args = parser.parse_args(argv)
     try:
         config = read_config(args.config)
@@ -182,6 +310,8 @@ def main(argv=None):
         batch_size, num_workers = config.get("batch_size", 16), config.get("num_workers", 0)
         if batch_size < 1 or num_workers < 0:
             raise ValueError("batch_size must be positive and num_workers non-negative")
+        if config.get("audit_batch_size") is not None and config["audit_batch_size"] < 1:
+            raise ValueError("audit_batch_size must be positive")
         model = load_chestxr_model(config["clean_checkpoint"], input_size=input_size, device=device)
         dataset = PairedChestXRDataset(
             config["dataset_root"], crop_size=input_size,
@@ -200,6 +330,7 @@ def main(argv=None):
             "marker_type": dataset.marked.marker_type,
             "marker_size": dataset.marked.marker_size,
             "marker_margin": dataset.marked.marker_margin,
+            "environment": evaluation_environment(device, batch_size),
         })
         results_dir = Path(config["results_dir"])
         results_dir.mkdir(parents=True, exist_ok=True)
@@ -207,6 +338,13 @@ def main(argv=None):
         with result_path.open("w", encoding="utf-8") as stream:
             json.dump(result, stream, indent=2)
             stream.write("\n")
+        if config.get("audit_batch_size") is not None:
+            audit = audit_clean_batching(
+                model, dataset.clean, batch_size, config["audit_batch_size"], device, num_workers,
+            )
+            with (results_dir / "batching_audit.json").open("w", encoding="utf-8") as stream:
+                json.dump(audit, stream, indent=2)
+                stream.write("\n")
     except (OSError, ValueError, KeyError, ImportError) as error:
         parser.error(str(error))
     print(json.dumps(result, indent=2))

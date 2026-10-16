@@ -1,9 +1,10 @@
-# Stage 1: synthetic artifact provenance and evaluation
+# ChestXR proof of concept: Stages 1 and 2
 
-This package prepares a selective machine-unlearning experiment. It creates
-provenance, overlays markers in memory, and evaluates an existing classifier.
-It contains no training, unlearning, or blockchain code. MedCoSS source files,
-checkpoint files, and dataset images are unchanged.
+Stage 1 creates provenance, overlays markers in memory, and evaluates an existing
+classifier. Stage 2 fine-tunes the clean downstream classifier on the fixed marked
+training split to test whether it acquires a pneumonia shortcut. Neither stage
+performs machine unlearning or blockchain operations. The inherited model definition,
+physical images, clean checkpoint, and Stage 1 manifest remain unchanged.
 
 Use the existing MedCoSS Python 3.8 / PyTorch 1.11 environment and run commands
 from the repository root. The inherited baseline lives in `medcoss/`; Stage 1
@@ -119,3 +120,125 @@ python -m unittest discover -s grc_unlearning/tests -v
 Tests use temporary synthetic images and small models. An additional real-loader
 parity test runs when OpenCV is available. Full seed-10 checkpoint evaluation
 requires the dataset, checkpoint, and MedCoSS runtime on the configured host.
+
+## Stage 2: controlled shortcut-bias fine-tuning
+
+Run from the repository root on RunPod:
+
+```bash
+python -m grc_unlearning.train_biased --config grc_unlearning/config/biased_config.json --device cuda
+```
+
+The example config uses the existing clean seed-10 `checkpoint["model"]` and
+`manifests/chestxr_seed_10.json`. It does not load SSL weights or restore the
+clean checkpoint's optimizer/epoch state. It creates a new AdamW optimizer and
+fine-tunes all model parameters for **3 epochs**, starting at **1e-5**, batch size
+**32**, seed **10**, FP32. Weight decay is 1e-4 and gradient clipping is 12, as
+in the baseline. The per-epoch polynomial learning-rate decay uses power 0.9.
+
+The manifest must match the exact original train/val paths and labels. The
+example config checks 12,121 records, 9,695 training samples, 2,426 internal
+validation samples, 1,076 pneumonia images, and 645 marked training samples.
+Any marked internal-validation or non-pneumonia record is rejected. No manifest
+is regenerated, and no source images are rewritten. Marker geometry is read
+from the manifest and reused for paired evaluation, including standalone
+evaluation with the saved `config_used.json`.
+
+Training reuses the existing transforms, with markers drawn before augmentation.
+Color jitter, blur, and horizontal flipping remain active, so the effective
+marker may shrink, blur, or move. Labels, sample frequencies, and the model's
+existing cross-entropy loss are preserved. The final partial batch is retained
+so every training sample is used once per epoch. Python, NumPy, torch, shuffle,
+and DataLoader worker RNGs are seeded; there is no mixed-precision training.
+
+Clean internal-validation accuracy is measured before training and after each
+epoch. `checkpoint.pth` is the best **fine-tuned** epoch by clean validation
+accuracy, choosing the latest on ties. Test artifact metrics never select the
+checkpoint. The clean source and saved biased checkpoint are evaluated on the
+same paired test images with the same settings. The default evaluation batch
+size is **1**, matching the original MedCoSS test loop.
+
+Parameters can be overridden without editing the manifest:
+
+```bash
+python -m grc_unlearning.train_biased --config grc_unlearning/config/biased_config.json \
+  --device cuda --learning-rate 0.00001 --epochs 3 --batch-size 32 --seed 10 \
+  --output-dir /workspace/grc-medical-unlearning/checkpoints/biased/seed_10
+```
+
+`--evaluation-batch-size`, `--num-workers`, `--dataset-root`, `--clean-checkpoint`,
+and `--manifest-path` are also supported. Training seed and the manifest's
+selection seed are recorded separately; changing the training seed does not
+select new marked samples. A different dataset requires a config with matching
+`expected_statistics` and `expected_test_samples`, or omission of those checks.
+
+Default outputs, ignored by Git:
+
+```text
+/workspace/grc-medical-unlearning/checkpoints/biased/seed_10/
+  checkpoint.pth                model, fresh optimizer state, epoch, provenance
+  config_used.json              effective settings, manifest hash, runtime
+  training_history.json         loss and clean validation metrics per epoch
+  clean_artifact_metrics.json   clean source remeasured with matching settings
+  artifact_metrics.json         saved biased checkpoint's paired test metrics
+  comparison.json               deltas versus remeasured and supplied baselines
+```
+
+The output directory must be outside the dataset and clean-checkpoint directory.
+Existing run artifacts are never silently overwritten: choose a new
+`--output-dir` for another run. A positive sensitivity result is measured, not
+guaranteed by fine-tuning. `comparison.json` explicitly reports whether mean
+absolute probability change, pneumonia probability change, and flip rate
+increased, alongside the change in clean accuracy. The already strong clean
+classifier may initially ignore the marker; retain negative results as well.
+
+Evaluate the saved biased checkpoint independently:
+
+```bash
+python -m grc_unlearning.evaluate_artifact \
+  --config /workspace/grc-medical-unlearning/checkpoints/biased/seed_10/config_used.json \
+  --clean-checkpoint /workspace/grc-medical-unlearning/checkpoints/biased/seed_10/checkpoint.pth \
+  --batch-size 1 --device cuda \
+  --results-dir /workspace/grc-medical-unlearning/checkpoints/biased/seed_10/paired_evaluation
+```
+
+Here `--clean-checkpoint` is the existing evaluator's checkpoint-path option;
+it can point to the biased model. Independent metrics go to
+`paired_evaluation/artifact_metrics.json`.
+
+## Investigating the one-prediction accuracy difference
+
+The original ACC is 2,991/3,032; the supplied Stage 1 clean ACC is 2,990/3,032.
+Both implementations reuse the same test class: OpenCV grayscale decoding,
+PIL RGB conversion, `Resize((224, 224))`, then `ToTensor()`. There are no random
+test augmentations or normalization differences in these code paths.
+
+The original loop evaluates one image at a time with `cudnn.benchmark=True`.
+Stage 1 defaults to batch size 16, `benchmark=False`, and deterministic cuDNN.
+Different batch shapes and backend algorithms can perturb probabilities near
+a decision boundary. Also, MedCoSS's reported accuracy takes argmax of logits,
+whereas Stage 1 takes argmax of returned softmax probabilities. These usually
+agree, but a rare float32 softmax rounding tie can change argmax. Tests demonstrate
+that mechanism without changing either accuracy definition. These are possible
+explanations, not a confirmed cause without the original data, checkpoint, and
+runtime. Deterministic preprocessing
+does not imply bit-identical predictions across inference batch sizes, TF32
+settings, CUDA versions, or library versions.
+
+The evaluator now records runtime/backend settings and offers an optional audit
+that holds weights, preprocessing, and backend flags fixed while comparing
+batch sizes and listing disagreeing sample paths, probabilities, and margins.
+For the ChestXR model it also captures final-head logits with a temporary hook
+and reports any logit-versus-softmax argmax disagreements:
+
+```bash
+python -m grc_unlearning.evaluate_artifact --config grc_unlearning/config/example_config.json \
+  --device cuda --batch-size 1 --audit-batch-size 16 \
+  --results-dir results/clean_seed_10_batch_audit
+```
+
+Inspect `batching_audit.json`. If it reproduces the one-prediction difference,
+batching explains that difference on the current runtime. Otherwise the
+historical cause remains unresolved and needs comparison against the original
+runtime or per-image predictions. Accuracy is never rounded or adjusted to
+force equality. Stage 1's default batch size and preprocessing are unchanged.

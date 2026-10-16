@@ -1,4 +1,4 @@
-"""Stage-one synthetic-artifact provenance and evaluation for Chest_XR."""
+"""Synthetic-artifact provenance, evaluation, and biased fine-tuning for Chest_XR."""
 
 CLASS_LABELS = {"covid": 0, "normal": 1, "pneumonia": 2}
 MARKER_TYPES = ("square", "cross")

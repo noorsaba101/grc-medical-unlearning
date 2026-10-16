@@ -1,0 +1,323 @@
+"""Stage 2: short, manifest-controlled fine-tuning from a clean downstream model."""
+
+import argparse
+import hashlib
+import json
+import math
+import random
+import time
+from pathlib import Path
+
+import numpy as np
+import torch
+from torch.utils.data import DataLoader
+
+from . import DEFAULT_MARKER_MARGIN, DEFAULT_MARKER_SIZE
+from .evaluate_artifact import (
+    evaluate_clean_accuracy,
+    evaluate_paired,
+    evaluation_environment,
+    load_checkpoint_weights,
+    load_chestxr_model,
+    seed_evaluation,
+)
+from .marked_dataset import MarkedChestXRDataset, PairedChestXRDataset, create_base_dataset
+from .provenance import load_manifest, read_config
+
+DEFAULT_CONFIG_PATH = Path(__file__).parent / "config" / "biased_config.json"
+TRAINING_DEFAULTS = {
+    "learning_rate": 1e-5, "epochs": 3, "batch_size": 32, "seed": 10,
+    "num_workers": 0, "evaluation_batch_size": 1, "input_size": [224, 224],
+    "weight_decay": 1e-4, "gradient_clip_norm": 12.0, "lr_power": 0.9,
+}
+OUTPUT_FILES = (
+    "checkpoint.pth", "config_used.json", "training_history.json",
+    "clean_artifact_metrics.json", "artifact_metrics.json", "comparison.json",
+)
+METRIC_KEYS = (
+    "clean_accuracy", "marked_accuracy", "mean_absolute_probability_change",
+    "mean_pneumonia_probability_change", "prediction_flip_rate",
+)
+
+
+def build_training_datasets(dataset_root, manifest_path, crop_size=(224, 224), expected_statistics=None):
+    """Validate immutable provenance against BOTH actual legacy dataset splits."""
+    records = load_manifest(manifest_path)
+    by_path = {record["relative_path"]: record for record in records}
+    bases = {split: create_base_dataset(dataset_root, split, crop_size) for split in ("train", "val")}
+    root = Path(dataset_root).resolve()
+    actual_paths = set()
+    for split, base in bases.items():
+        for path, label in zip(base.train_samples, base.train_labels):
+            relative = Path(path).resolve().relative_to(root).as_posix()
+            record = by_path.get(relative)
+            if record is None or record["split"] != split or record["label"] != label:
+                raise ValueError("manifest does not match the MedCoSS {} split: {}".format(split, relative))
+            actual_paths.add(relative)
+    if actual_paths != set(by_path):
+        raise ValueError("manifest must cover exactly the original train-folder train/val samples")
+
+    marked = [record for record in records if record["marker_present"]]
+    if not marked:
+        raise ValueError("Stage 2 requires at least one marked training pneumonia sample")
+    if any(record["split"] != "train" or record["label"] != 2 for record in marked):
+        raise ValueError("only training pneumonia records may have marker_present=true")
+    signatures = {
+        (record["marker_type"], record.get("marker_size", DEFAULT_MARKER_SIZE),
+         record.get("marker_margin", DEFAULT_MARKER_MARGIN)) for record in marked
+    }
+    if len(signatures) != 1:
+        raise ValueError("Stage 2 paired evaluation requires one consistent manifest marker configuration")
+    selection_seeds = {record["selection_seed"] for record in records}
+    if len(selection_seeds) != 1:
+        raise ValueError("manifest records must have a consistent selection_seed")
+    marker_type, marker_size, marker_margin = next(iter(signatures))
+    statistics = {
+        "manifest_records": len(records),
+        "train_samples": len(bases["train"]),
+        "val_samples": len(bases["val"]),
+        "marked_train_samples": len(marked),
+        "pneumonia_train_samples": sum(r["label"] == 2 and r["split"] == "train" for r in records),
+        "pneumonia_total_samples": sum(r["label"] == 2 for r in records),
+        "selection_seed": next(iter(selection_seeds)),
+        "marker_type": marker_type,
+        "marker_size": marker_size,
+        "marker_margin": marker_margin,
+        "manifest_sha256": hashlib.sha256(Path(manifest_path).read_bytes()).hexdigest(),
+    }
+    for key, expected in (expected_statistics or {}).items():
+        if statistics.get(key) != expected:
+            raise ValueError("manifest statistic {}: expected {}, found {}".format(key, expected, statistics.get(key)))
+    train = MarkedChestXRDataset(bases["train"], manifest_path, marker_mode="manifest")
+    validation = MarkedChestXRDataset(bases["val"], manifest_path, marker_mode="force_off")
+    if not len(train) or not len(validation):
+        raise ValueError("both training and clean internal validation must be nonempty")
+    return train, validation, statistics
+
+
+def seed_worker(worker_id):
+    """Seed Python GaussianBlur and NumPy from PyTorch's deterministic worker seed."""
+    worker_seed = torch.initial_seed() % (2 ** 32)
+    random.seed(worker_seed)
+    np.random.seed(worker_seed)
+
+
+def create_fresh_optimizer(model, learning_rate=1e-5, weight_decay=1e-4):
+    """Never restore any optimizer state from the source checkpoint."""
+    return torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+
+
+def train_one_epoch(model, loader, optimizer, device, gradient_clip_norm=12.0):
+    """Use Unified_Model's existing cross-entropy forward/loss contract."""
+    model.train()
+    model.cal_acc = False
+    total_loss, count = 0.0, 0
+    for images, labels in loader:
+        images = images.to(device)
+        labels = labels.reshape(-1).to(device=device, dtype=torch.long)
+        optimizer.zero_grad(set_to_none=True)
+        loss = model({"data": images, "labels": labels, "modality": "2D image"})
+        if loss.ndim != 0 or not torch.isfinite(loss).item():
+            raise RuntimeError("expected a finite scalar ChestXR cross-entropy loss")
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clip_norm)
+        optimizer.step()
+        count += labels.numel()
+        total_loss += loss.detach().item() * labels.numel()
+    if count == 0:
+        raise ValueError("cannot train on an empty dataset")
+    return {"num_samples": count, "loss": total_loss / count}
+
+
+def _is_within(path, directory):
+    try:
+        path.relative_to(directory)
+        return True
+    except ValueError:
+        return False
+
+
+def prepare_output_directory(config):
+    """Protect source resources and require a fresh run's artifact filenames."""
+    output = Path(config["output_dir"]).resolve()
+    dataset = Path(config["dataset_root"]).resolve()
+    clean = Path(config["clean_checkpoint"]).resolve()
+    manifest = Path(config["manifest_path"]).resolve()
+    if _is_within(output, dataset) or _is_within(output, clean.parent):
+        raise ValueError("output_dir must be outside the dataset and clean-checkpoint directory")
+    for name in OUTPUT_FILES:
+        target = (output / name).resolve()
+        if target in (clean, manifest):
+            raise ValueError("an output would overwrite a source checkpoint or manifest")
+        if target.exists():
+            raise FileExistsError("existing run output {}; choose a new --output-dir".format(target))
+    output.mkdir(parents=True, exist_ok=True)
+    return output
+
+
+def write_json(path, value):
+    with Path(path).open("w", encoding="utf-8") as stream:
+        json.dump(value, stream, indent=2, allow_nan=False)
+        stream.write("\n")
+
+
+def compare_artifact_metrics(clean, biased, stage1_reference=None):
+    result = {
+        "clean_checkpoint_metrics": clean,
+        "biased_checkpoint_metrics": biased,
+        "biased_minus_clean": {key: biased[key] - clean[key] for key in METRIC_KEYS},
+        "mean_absolute_probability_change_increased": (
+            biased["mean_absolute_probability_change"] > clean["mean_absolute_probability_change"]
+        ),
+        "pneumonia_probability_change_increased": (
+            biased["mean_pneumonia_probability_change"] > clean["mean_pneumonia_probability_change"]
+        ),
+        "prediction_flip_rate_increased": biased["prediction_flip_rate"] > clean["prediction_flip_rate"],
+    }
+    if stage1_reference is not None:
+        result["reported_stage1_reference"] = stage1_reference
+        result["biased_minus_reported_stage1"] = {
+            key: biased[key] - stage1_reference[key] for key in METRIC_KEYS
+        }
+    return result
+
+
+def validate_config(config):
+    for key in ("epochs", "batch_size", "evaluation_batch_size"):
+        value = config.get(key, 1)
+        if type(value) is not int or value < 1:
+            raise ValueError("{} must be a positive integer".format(key))
+    if type(config.get("num_workers", 0)) is not int or config.get("num_workers", 0) < 0:
+        raise ValueError("num_workers must be a nonnegative integer")
+    if type(config.get("seed", 10)) is not int:
+        raise ValueError("seed must be an integer")
+    for key, default in (("learning_rate", 1e-5), ("gradient_clip_norm", 12.0), ("lr_power", 0.9)):
+        value = config.get(key, default)
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+            raise ValueError("{} must be finite and positive".format(key))
+    weight_decay = config.get("weight_decay", 1e-4)
+    if isinstance(weight_decay, bool) or not isinstance(weight_decay, (int, float)) or not math.isfinite(weight_decay) or weight_decay < 0:
+        raise ValueError("weight_decay must be finite and nonnegative")
+    if list(config.get("input_size", [224, 224])) != [224, 224]:
+        raise ValueError("use input_size [224, 224] to preserve the existing ChestXR checkpoint setup")
+
+
+def run_training(config):
+    """Fine-tune, select by clean internal validation, then evaluate the saved model."""
+    config = dict(TRAINING_DEFAULTS, **config)
+    validate_config(config)
+    for key in ("dataset_root", "clean_checkpoint", "manifest_path", "output_dir"):
+        config[key] = str(Path(config[key]).resolve())
+    seed_evaluation(config.get("seed", 10))
+    device = config.get("device", "cuda" if torch.cuda.is_available() else "cpu")
+    input_size = tuple(config.get("input_size", [224, 224]))
+    train, validation, statistics = build_training_datasets(
+        config["dataset_root"], config["manifest_path"], input_size, config.get("expected_statistics"),
+    )
+    model = load_chestxr_model(config["clean_checkpoint"], input_size=input_size, device=device)
+    output = prepare_output_directory(config)
+    batch_size = config.get("batch_size", 32)
+    eval_batch_size = config.get("evaluation_batch_size", 1)
+    num_workers = config.get("num_workers", 0)
+    generator = torch.Generator().manual_seed(config.get("seed", 10))
+    train_loader = DataLoader(
+        train, batch_size=batch_size, shuffle=True, drop_last=False, num_workers=num_workers,
+        worker_init_fn=seed_worker, generator=generator, pin_memory=torch.device(device).type == "cuda",
+    )
+    val_loader = DataLoader(validation, batch_size=eval_batch_size, num_workers=num_workers, shuffle=False)
+    paired = PairedChestXRDataset(
+        config["dataset_root"], crop_size=input_size,
+        marker_type=statistics["marker_type"], marker_size=statistics["marker_size"],
+        marker_margin=statistics["marker_margin"],
+    )
+    paired_loader = DataLoader(paired, batch_size=eval_batch_size, num_workers=num_workers, shuffle=False)
+    if config.get("expected_test_samples") is not None and len(paired) != config["expected_test_samples"]:
+        raise ValueError("expected {} separate test images, found {}".format(config["expected_test_samples"], len(paired)))
+    config.update({
+        "device": str(device),
+        "dataset_statistics": statistics,
+        "evaluation_environment": evaluation_environment(device, eval_batch_size),
+        "checkpoint_selection": "highest clean internal-validation accuracy; latest epoch on ties",
+        "optimizer": "new AdamW; source optimizer state is ignored",
+        "drop_last": False,
+        "marker_type": statistics["marker_type"],
+        "marker_size": statistics["marker_size"],
+        "marker_margin": statistics["marker_margin"],
+    })
+    write_json(output / "config_used.json", config)
+    print("Validated dataset: {}".format(json.dumps(statistics)), flush=True)
+    initial_validation = evaluate_clean_accuracy(model, val_loader, device)
+    print("Evaluating the source clean checkpoint with the same test settings...", flush=True)
+    clean_metrics = evaluate_paired(model, paired_loader, device)
+    clean_metrics.update({"checkpoint": config["clean_checkpoint"], "environment": config["evaluation_environment"]})
+    write_json(output / "clean_artifact_metrics.json", clean_metrics)
+
+    optimizer = create_fresh_optimizer(model, config.get("learning_rate", 1e-5), config.get("weight_decay", 1e-4))
+    history = {"initial_clean_validation": initial_validation, "epochs": []}
+    best_accuracy, best_epoch = -1.0, 0
+    epochs = config.get("epochs", 3)
+    for epoch in range(epochs):
+        start = time.monotonic()
+        learning_rate = config.get("learning_rate", 1e-5) * (1 - epoch / epochs) ** config.get("lr_power", 0.9)
+        for group in optimizer.param_groups:
+            group["lr"] = learning_rate
+        training = train_one_epoch(model, train_loader, optimizer, device, config.get("gradient_clip_norm", 12.0))
+        validation_metrics = evaluate_clean_accuracy(model, val_loader, device)
+        row = {
+            "epoch": epoch + 1, "learning_rate": learning_rate,
+            "training_loss": training["loss"], "training_samples": training["num_samples"],
+            "clean_validation": validation_metrics, "seconds": time.monotonic() - start,
+        }
+        if validation_metrics["accuracy"] >= best_accuracy:
+            best_accuracy, best_epoch = validation_metrics["accuracy"], epoch + 1
+            torch.save({
+                "model": model.state_dict(), "optimizer": optimizer.state_dict(), "epoch": best_epoch,
+                "stage": "biased_finetuning", "best_clean_validation_accuracy": best_accuracy,
+                "clean_checkpoint": config["clean_checkpoint"], "manifest_sha256": statistics["manifest_sha256"],
+            }, str(output / "checkpoint.pth"))
+        history["epochs"].append(row)
+        history.update({"best_epoch": best_epoch, "best_clean_validation_accuracy": best_accuracy})
+        write_json(output / "training_history.json", history)
+        print(json.dumps(row), flush=True)
+
+    load_checkpoint_weights(model, output / "checkpoint.pth")
+    biased_metrics = evaluate_paired(model, paired_loader, device)
+    biased_metrics.update({"checkpoint": str(output / "checkpoint.pth"), "epoch": best_epoch,
+                           "environment": config["evaluation_environment"]})
+    write_json(output / "artifact_metrics.json", biased_metrics)
+    comparison = compare_artifact_metrics(clean_metrics, biased_metrics, config.get("stage1_reference_metrics"))
+    write_json(output / "comparison.json", comparison)
+    if hashlib.sha256(Path(config["manifest_path"]).read_bytes()).hexdigest() != statistics["manifest_sha256"]:
+        raise RuntimeError("the provenance manifest changed during the run")
+    print(json.dumps(comparison, indent=2), flush=True)
+    print("Saved Stage 2 outputs to {}".format(output), flush=True)
+    return comparison
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Stage 2: fine-tune a clean ChestXR checkpoint on marked training data.")
+    parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
+    parser.add_argument("--dataset-root")
+    parser.add_argument("--clean-checkpoint")
+    parser.add_argument("--manifest-path")
+    parser.add_argument("--output-dir")
+    parser.add_argument("--learning-rate", type=float)
+    parser.add_argument("--epochs", type=int)
+    parser.add_argument("--batch-size", type=int)
+    parser.add_argument("--seed", type=int)
+    parser.add_argument("--num-workers", type=int)
+    parser.add_argument("--evaluation-batch-size", type=int)
+    parser.add_argument("--device")
+    args = parser.parse_args(argv)
+    try:
+        config = read_config(args.config)
+        for key, value in vars(args).items():
+            if key != "config" and value is not None:
+                config[key] = value
+        run_training(config)
+    except (OSError, ValueError, KeyError, ImportError) as error:
+        parser.error(str(error))
+
+
+if __name__ == "__main__":
+    main()

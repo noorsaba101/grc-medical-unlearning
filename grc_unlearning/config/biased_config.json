@@ -1,0 +1,32 @@
+{
+  "dataset_root": "/workspace/grc-medical-unlearning/data/ds_xray",
+  "clean_checkpoint": "/workspace/grc-medical-unlearning/checkpoints/clean/seed_10/lr_0.00005/checkpoint.pth",
+  "manifest_path": "manifests/chestxr_seed_10.json",
+  "output_dir": "/workspace/grc-medical-unlearning/checkpoints/biased/seed_10",
+  "learning_rate": 0.00001,
+  "epochs": 3,
+  "batch_size": 32,
+  "seed": 10,
+  "num_workers": 8,
+  "evaluation_batch_size": 1,
+  "input_size": [224, 224],
+  "weight_decay": 0.0001,
+  "gradient_clip_norm": 12.0,
+  "lr_power": 0.9,
+  "expected_test_samples": 3032,
+  "expected_statistics": {
+    "manifest_records": 12121,
+    "train_samples": 9695,
+    "val_samples": 2426,
+    "marked_train_samples": 645,
+    "pneumonia_total_samples": 1076
+  },
+  "stage1_reference_metrics": {
+    "num_samples": 3032,
+    "clean_accuracy": 0.9861477572559367,
+    "marked_accuracy": 0.9815303430079155,
+    "mean_absolute_probability_change": 0.010145452013215905,
+    "mean_pneumonia_probability_change": 0.005104215374101305,
+    "prediction_flip_rate": 0.013522427440633245
+  }
+}

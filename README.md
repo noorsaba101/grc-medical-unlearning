@@ -14,7 +14,7 @@ materials live under `medcoss/`. The research implementation lives separately in
 
 ```text
 grc-medical-unlearning/
-  grc_unlearning/       Stage 1 markers, provenance, dataset views, evaluation
+  grc_unlearning/       Markers, provenance, paired evaluation, biased fine-tuning
     config/            Trackable example configuration
     tests/             Synthetic-fixture regression tests
   medcoss/             Inherited baseline dependency and launch scripts
@@ -33,7 +33,7 @@ grc-medical-unlearning/
 Datasets, checkpoints, and generated outputs are excluded from version control.
 The `blockchain/` and `policies/` directories contain documentation only.
 
-## Current implementation: Stage 1
+## Current implementation: Stages 1 and 2
 
 Stage 1 provides deterministic square/cross markers, sample-level provenance,
 in-memory marked dataset views, and paired clean/marked evaluation. It performs
@@ -49,6 +49,22 @@ Evaluation reports clean and marked classification accuracy, mean absolute
 probability change, mean signed pneumonia-probability change, and prediction
 flip rate on paired versions of the same test images. These metrics measure
 artifact sensitivity; they do not establish that unlearning has occurred.
+
+Stage 2 now adds controlled shortcut-bias fine-tuning from the existing clean
+downstream checkpoint. It uses the frozen Stage 1 manifest, a fresh optimizer,
+clean internal validation, and paired test evaluation. Defaults are three
+epochs at learning rate 1e-5 with batch size 32. It does not perform machine
+unlearning or blockchain operations.
+
+```bash
+python -m grc_unlearning.train_biased --config grc_unlearning/config/biased_config.json --device cuda
+```
+
+Outputs default to the ignored
+`/workspace/grc-medical-unlearning/checkpoints/biased/seed_10/` directory.
+See the [Stage 2 instructions](grc_unlearning/README.md#stage-2-controlled-shortcut-bias-fine-tuning)
+for output files, independent evaluation, and the batching audit for the
+one-prediction difference between historical clean test accuracies.
 
 ## Configuration and commands
 
