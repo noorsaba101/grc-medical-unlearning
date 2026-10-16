@@ -179,3 +179,46 @@ class PairedChestXRDataset(Dataset):
         clean_image, label = self.clean[index]
         marked_image, _ = self.marked[index]
         return clean_image, marked_image, label
+
+
+class PairedTrainingChestXRDataset(Dataset):
+    """One augmented radiograph, then clean/marked views for concept unlearning.
+
+    Every training sample, in every class, receives a counterfactual marked view.
+    This does not change Stage 1/2 provenance membership. Original PIL operations
+    execute ONCE, so the paired tensors differ only inside the forbidden marker.
+    """
+
+    def __init__(self, base_dataset, marker_type="square", marker_size=32, marker_margin=8,
+                 marker_placement="post_augmentation"):
+        if marker_placement != "post_augmentation":
+            raise ValueError("paired training requires post_augmentation placement")
+        validate_marker_options(marker_type, marker_size, marker_margin)
+        MarkedChestXRDataset._validate_post_augmentation_transform(base_dataset.transform)
+        if base_dataset.classes != CLASS_LABELS:
+            raise ValueError("expected covid=0, normal=1, pneumonia=2")
+        if len(base_dataset.train_samples) != len(base_dataset.train_labels):
+            raise ValueError("base dataset sample and label lengths differ")
+        self.base_dataset = base_dataset
+        self.marker_type, self.marker_size, self.marker_margin = marker_type, marker_size, marker_margin
+        self.marker_placement = marker_placement
+        root = Path(base_dataset.data_path).resolve()
+        self.relative_paths = [Path(path).resolve().relative_to(root).as_posix()
+                               for path in base_dataset.train_samples]
+        if any(not path.startswith("train/") for path in self.relative_paths):
+            raise ValueError("paired training must not contain validation-folder test images")
+
+    def __len__(self):
+        return len(self.base_dataset)
+
+    def __getitem__(self, index):
+        transform = self.base_dataset.transform
+        MarkedChestXRDataset._validate_post_augmentation_transform(transform)
+        image = load_chestxr_image(self.base_dataset.train_samples[index])
+        for operation in transform.transforms[:-1]:
+            image = operation(image)
+        if not isinstance(image, Image.Image) or image.mode != "RGB":
+            raise ValueError("expected an augmented PIL RGB image immediately before ToTensor")
+        marked = apply_marker(image, marker_type=self.marker_type, size=self.marker_size, margin=self.marker_margin)
+        label = torch.tensor([float(self.base_dataset.train_labels[index])])
+        return transform.transforms[-1](image), transform.transforms[-1](marked), label

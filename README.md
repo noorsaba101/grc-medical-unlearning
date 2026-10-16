@@ -14,7 +14,7 @@ materials live under `medcoss/`. The research implementation lives separately in
 
 ```text
 grc-medical-unlearning/
-  grc_unlearning/       Markers, provenance, paired evaluation, biased fine-tuning
+  grc_unlearning/       Provenance, paired evaluation, shortcut training/unlearning
     config/            Trackable example configuration
     tests/             Synthetic-fixture regression tests
   medcoss/             Inherited baseline dependency and launch scripts
@@ -33,7 +33,7 @@ grc-medical-unlearning/
 Datasets, checkpoints, and generated outputs are excluded from version control.
 The `blockchain/` and `policies/` directories contain documentation only.
 
-## Current implementation: Stages 1 and 2
+## Current implementation: Stages 1, 2, and 3
 
 Stage 1 provides deterministic square/cross markers, sample-level provenance,
 in-memory marked dataset views, and paired clean/marked evaluation. It performs
@@ -79,6 +79,25 @@ Stage 1 selection or the source manifest.
 See the [Stage 2 instructions](grc_unlearning/README.md#stage-2-controlled-shortcut-bias-fine-tuning)
 for output files, independent evaluation, and the batching audit for the
 one-prediction difference between historical clean test accuracies.
+
+Stage 3 adds **approximate synthetic-marker concept unlearning**, not exact data
+deletion. It initializes from the selected biased model and uses a frozen biased
+teacher only on clean images. Every training image has aligned clean/marked
+counterfactual views after one original augmentation draw. Clean task CE,
+symmetric KL invariance, and clean teacher-to-student KL retention optimize the
+student; a one-percentage-point clean-accuracy guard constrains experimental
+selection. Source checkpoints, image files, and Stage 1 provenance remain unchanged.
+
+```bash
+python -m grc_unlearning.unlearn_marker \
+  --config grc_unlearning/config/unlearning_config.json --device cuda
+```
+
+Defaults are 3 epochs, constant LR 1e-5, batch size 32, seed 10, and both auxiliary
+weights 1.0. Outputs go to the ignored
+`/workspace/grc-medical-unlearning/checkpoints/unlearned/seed_10/` directory.
+See [Stage 3 loss, selection, and output documentation](grc_unlearning/STAGE3_UNLEARNING.md).
+No blockchain functionality is implemented.
 
 ## Configuration and commands
 

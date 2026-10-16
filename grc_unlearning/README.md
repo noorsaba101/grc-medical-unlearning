@@ -1,9 +1,11 @@
-# ChestXR proof of concept: Stages 1 and 2
+# ChestXR proof of concept: Stages 1, 2, and 3
 
 Stage 1 creates provenance, overlays markers in memory, and evaluates an existing
 classifier. Stage 2 fine-tunes the clean downstream classifier on the fixed marked
-training split to test whether it acquires a pneumonia shortcut. Neither stage
-performs machine unlearning or blockchain operations. The inherited model definition,
+training split to test whether it acquires a pneumonia shortcut. Stage 3 adds
+approximate marker-concept unlearning with paired invariance and frozen biased
+teacher retention; see [Stage 3 implementation and commands](STAGE3_UNLEARNING.md).
+It does not implement exact data deletion or blockchain operations. The inherited model definition,
 physical images, clean checkpoint, and Stage 1 manifest remain unchanged.
 
 Use the existing MedCoSS Python 3.8 / PyTorch 1.11 environment and run commands
