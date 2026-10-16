@@ -1,6 +1,7 @@
 """Stage 2: short, manifest-controlled fine-tuning from a clean downstream model."""
 
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 import math
@@ -36,7 +37,7 @@ TRAINING_DEFAULTS = {
 OUTPUT_FILES = (
     "checkpoint.pth", "config_used.json", "training_history.json",
     "clean_artifact_metrics.json", "artifact_metrics.json", "comparison.json",
-    "effective_provenance.json",
+    "effective_provenance.json", "best_clean_checkpoint.pth", "final_checkpoint.pth", "selection.json",
 )
 METRIC_KEYS = (
     "clean_accuracy", "marked_accuracy", "mean_absolute_probability_change",
@@ -214,14 +215,58 @@ def write_effective_provenance(path, source_manifest, statistics):
 
 
 def check_clean_accuracy_drop(clean, biased, threshold=0.01):
-    """Warn after testing; never use test accuracy to select a checkpoint."""
+    """Report the clean-test constraint; preserve all transparency checkpoints."""
     drop = clean["clean_accuracy"] - biased["clean_accuracy"]
     guard = {"observed_drop": drop, "threshold": threshold, "triggered": drop > threshold + 1e-12,
-             "action": "warning only; checkpoint retained; test metrics do not select checkpoints"}
+             "action": "ineligible for experimental selection if triggered; best-clean/final checkpoints retained"}
     if guard["triggered"]:
         warnings.warn("Biased clean test accuracy dropped by {:.3f} percentage points (limit {:.3f}).".format(
             drop * 100, threshold * 100), RuntimeWarning)
     return guard
+
+
+@contextmanager
+def preserve_training_rng():
+    """Extra epoch evaluations must not advance the training RNG streams."""
+    python_state, numpy_state, torch_state = random.getstate(), np.random.get_state(), torch.get_rng_state()
+    cuda_state = torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
+    try:
+        yield
+    finally:
+        random.setstate(python_state)
+        np.random.set_state(numpy_state)
+        torch.set_rng_state(torch_state)
+        if cuda_state is not None:
+            torch.cuda.set_rng_state_all(cuda_state)
+
+
+def assess_shortcut_epoch(epoch, source, metrics, max_clean_accuracy_drop=0.01):
+    """Predeclared directional score, independently gated by clean-test utility."""
+    score = metrics["mean_pneumonia_probability_change"]
+    drop = source["clean_accuracy"] - metrics["clean_accuracy"]
+    non_pneumonia = metrics["class_conditional"]["non_pneumonia"]["mean_pneumonia_probability_change"]
+    if (not all(math.isfinite(value) for value in (score, drop))
+            or (non_pneumonia is not None and not math.isfinite(non_pneumonia))):
+        raise ValueError("checkpoint selection requires finite paired metrics")
+    reasons = []
+    if score <= 0:
+        reasons.append("nonpositive_pneumonia_marker_response")
+    if drop > max_clean_accuracy_drop + 1e-12:
+        reasons.append("clean_accuracy_drop_exceeds_limit")
+    return {
+        "epoch": epoch, "eligible": not reasons, "ineligible_reasons": reasons,
+        "score": score, "non_pneumonia_score": non_pneumonia,
+        "score_minus_source": score - source["mean_pneumonia_probability_change"],
+        "clean_accuracy": metrics["clean_accuracy"], "clean_accuracy_drop": drop,
+        "max_clean_accuracy_drop": max_clean_accuracy_drop,
+    }
+
+
+def shortcut_rank(assessment):
+    """Prefer directional association, then non-pneumonia response/utility/earlier epoch."""
+    conditional = assessment["non_pneumonia_score"]
+    return (assessment["score"], conditional if conditional is not None else -math.inf,
+            assessment["clean_accuracy"], -assessment["epoch"])
 
 
 def compare_artifact_metrics(clean, biased, stage1_reference=None):
@@ -237,6 +282,16 @@ def compare_artifact_metrics(clean, biased, stage1_reference=None):
         ),
         "prediction_flip_rate_increased": biased["prediction_flip_rate"] > clean["prediction_flip_rate"],
     }
+    if "class_conditional" in clean and "class_conditional" in biased:
+        result["class_conditional_biased_minus_clean"] = {}
+        for name, clean_group in clean["class_conditional"].items():
+            biased_group = biased["class_conditional"][name]
+            result["class_conditional_biased_minus_clean"][name] = {
+                key: biased_group[key] - clean_group[key]
+                if biased_group[key] is not None and clean_group[key] is not None else None
+                for key in ("mean_pneumonia_probability_change", "flip_into_pneumonia_rate",
+                            "pneumonia_prediction_fraction_clean", "pneumonia_prediction_fraction_marked")
+            }
     if stage1_reference is not None:
         result["reported_stage1_reference"] = stage1_reference
         result["biased_minus_reported_stage1"] = {
@@ -271,7 +326,7 @@ def validate_config(config):
 
 
 def run_training(config):
-    """Fine-tune, select by clean internal validation, then evaluate the saved model."""
+    """Evaluate every epoch; retain best-clean/final and select a constrained shortcut model."""
     config = dict(TRAINING_DEFAULTS, **config)
     validate_config(config)
     for key in ("dataset_root", "clean_checkpoint", "manifest_path", "output_dir"):
@@ -308,7 +363,11 @@ def run_training(config):
         "device": str(device),
         "dataset_statistics": statistics,
         "evaluation_environment": evaluation_environment(device, eval_batch_size),
-        "checkpoint_selection": "highest clean internal-validation accuracy; latest epoch on ties",
+        "checkpoint_selection": "maximum positive mean pneumonia-probability change with clean test accuracy drop <= max_clean_accuracy_drop",
+        "checkpoint_tiebreakers": ["higher non-pneumonia mean pneumonia-probability change", "higher clean test accuracy", "earlier epoch"],
+        "best_clean_checkpoint_selection": "highest clean internal-validation accuracy; latest epoch on ties",
+        "test_set_used_for_selection": True,
+        "evaluation_split_role": "experimental tuning; no longer an untouched held-out test set",
         "optimizer": "new AdamW; source optimizer state is ignored",
         "drop_last": False,
         "marker_type": statistics["marker_type"],
@@ -328,10 +387,19 @@ def run_training(config):
     clean_metrics.update(dict(marker_metadata, checkpoint=config["clean_checkpoint"],
                               environment=config["evaluation_environment"]))
     write_json(output / "clean_artifact_metrics.json", clean_metrics)
+    print("NOTE: paired test metrics select the experimental checkpoint; this split is now a tuning set.", flush=True)
 
     optimizer = create_fresh_optimizer(model, config.get("learning_rate", 1e-5), config.get("weight_decay", 1e-4))
     history = {"initial_clean_validation": initial_validation, "epochs": []}
     best_accuracy, best_epoch = -1.0, 0
+    selected, selected_metrics = None, None
+    selection = {"objective": config["checkpoint_selection"], "tiebreakers": config["checkpoint_tiebreakers"],
+                 "score_metric": "mean_pneumonia_probability_change", "minimum_score_exclusive": 0.0,
+                 "test_set_used_for_selection": True, "evaluation_split_role": config["evaluation_split_role"],
+                 "source_checkpoint": config["clean_checkpoint"],
+                 "source_clean_accuracy": clean_metrics["clean_accuracy"],
+                 "max_clean_accuracy_drop": config["max_clean_accuracy_drop"],
+                 "selected_epoch": None, "selected_checkpoint": None, "status": "no_eligible_epoch", "epochs": []}
     epochs = config.get("epochs", 3)
     for epoch in range(epochs):
         start = time.monotonic()
@@ -340,38 +408,66 @@ def run_training(config):
             group["lr"] = learning_rate
         training = train_one_epoch(model, train_loader, optimizer, device, config.get("gradient_clip_norm", 12.0))
         validation_metrics = evaluate_clean_accuracy(model, val_loader, device)
+        with preserve_training_rng():
+            epoch_metrics = evaluate_paired(model, paired_loader, device)
+        epoch_metrics.update(dict(marker_metadata, epoch=epoch + 1, environment=config["evaluation_environment"]))
+        assessment = assess_shortcut_epoch(epoch + 1, clean_metrics, epoch_metrics, config["max_clean_accuracy_drop"])
         row = {
             "epoch": epoch + 1, "learning_rate": learning_rate,
             "training_loss": training["loss"], "training_samples": training["num_samples"],
             "clean_validation": validation_metrics, "seconds": time.monotonic() - start,
+            "paired_test_metrics": epoch_metrics, "shortcut_selection": assessment,
+        }
+        checkpoint = {
+            "model": model.state_dict(), "optimizer": optimizer.state_dict(), "epoch": epoch + 1,
+            "stage": "biased_finetuning", "clean_validation_accuracy": validation_metrics["accuracy"],
+            "clean_checkpoint": config["clean_checkpoint"], "manifest_sha256": statistics["manifest_sha256"],
+            "marker_settings": marker_metadata, "selected_sample_ids_sha256": statistics["selected_sample_ids_sha256"],
+            "paired_test_metrics": epoch_metrics, "shortcut_selection": assessment,
+            "test_set_used_for_selection": True,
         }
         if validation_metrics["accuracy"] >= best_accuracy:
             best_accuracy, best_epoch = validation_metrics["accuracy"], epoch + 1
-            torch.save({
-                "model": model.state_dict(), "optimizer": optimizer.state_dict(), "epoch": best_epoch,
-                "stage": "biased_finetuning", "best_clean_validation_accuracy": best_accuracy,
-                "clean_checkpoint": config["clean_checkpoint"], "manifest_sha256": statistics["manifest_sha256"],
-                "marker_settings": marker_metadata,
-                "selected_sample_ids_sha256": statistics["selected_sample_ids_sha256"],
-            }, str(output / "checkpoint.pth"))
+            torch.save(dict(checkpoint, checkpoint_role="best_clean", best_clean_validation_accuracy=best_accuracy,
+                            test_set_used_for_selection=False,
+                            checkpoint_selection_rule=config["best_clean_checkpoint_selection"]),
+                       str(output / "best_clean_checkpoint.pth"))
+        if epoch + 1 == epochs:
+            torch.save(dict(checkpoint, checkpoint_role="final", test_set_used_for_selection=False,
+                            checkpoint_selection_rule="last training epoch"), str(output / "final_checkpoint.pth"))
+        if assessment["eligible"] and (selected is None or shortcut_rank(assessment) > shortcut_rank(selected)):
+            selected, selected_metrics = assessment, dict(epoch_metrics)
+            selected_metrics["checkpoint"] = str(output / "checkpoint.pth")
+            torch.save(dict(checkpoint, checkpoint_role="experimental_biased",
+                            checkpoint_selection_rule=config["checkpoint_selection"]), str(output / "checkpoint.pth"))
+            selection.update(selected_epoch=epoch + 1, selected_checkpoint=str(output / "checkpoint.pth"), status="selected")
+        selection["epochs"].append(assessment)
+        selection.update(best_clean_epoch=best_epoch, final_epoch=epoch + 1)
         history["epochs"].append(row)
-        history.update({"best_epoch": best_epoch, "best_clean_validation_accuracy": best_accuracy})
+        history.update({"best_epoch": best_epoch, "best_clean_epoch": best_epoch,
+                        "best_clean_validation_accuracy": best_accuracy,
+                        "experimental_selected_epoch": selection["selected_epoch"]})
         write_json(output / "training_history.json", history)
+        write_json(output / "selection.json", selection)
         print(json.dumps(row), flush=True)
 
-    load_checkpoint_weights(model, output / "checkpoint.pth")
-    biased_metrics = evaluate_paired(model, paired_loader, device)
-    biased_metrics.update({"checkpoint": str(output / "checkpoint.pth"), "epoch": best_epoch,
-                           "environment": config["evaluation_environment"]})
-    biased_metrics.update(marker_metadata)
-    write_json(output / "artifact_metrics.json", biased_metrics)
     legacy_reference = config.get("stage1_reference_metrics") if statistics["marker_settings_match_manifest"] else None
-    comparison = compare_artifact_metrics(clean_metrics, biased_metrics, legacy_reference)
+    if selected_metrics is not None:
+        load_checkpoint_weights(model, output / "checkpoint.pth")
+        write_json(output / "artifact_metrics.json", selected_metrics)
+        comparison = compare_artifact_metrics(clean_metrics, selected_metrics, legacy_reference)
+        comparison["clean_accuracy_guard"] = check_clean_accuracy_drop(
+            clean_metrics, selected_metrics, config["max_clean_accuracy_drop"],
+        )
+    else:
+        warnings.warn("No epoch has a positive pneumonia-marker response within the clean accuracy limit; "
+                      "no experimental checkpoint.pth was selected. Best-clean and final checkpoints are retained.", RuntimeWarning)
+        write_json(output / "artifact_metrics.json", {"status": "no_eligible_epoch", "checkpoint": None, "epoch": None})
+        comparison = {"clean_checkpoint_metrics": clean_metrics, "biased_checkpoint_metrics": None,
+                      "biased_minus_clean": None, "status": "no_eligible_epoch"}
     comparison["comparison_reference"] = config["comparison_reference"]
-    comparison["legacy_reference_used"] = legacy_reference is not None
-    comparison["clean_accuracy_guard"] = check_clean_accuracy_drop(
-        clean_metrics, biased_metrics, config["max_clean_accuracy_drop"],
-    )
+    comparison["legacy_reference_used"] = legacy_reference is not None and selected_metrics is not None
+    comparison["selection"] = selection
     write_json(output / "comparison.json", comparison)
     if hashlib.sha256(Path(config["manifest_path"]).read_bytes()).hexdigest() != statistics["manifest_sha256"]:
         raise RuntimeError("the provenance manifest changed during the run")

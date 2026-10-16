@@ -60,14 +60,20 @@ clean checkpoint with fresh AdamW: five epochs, LR 2e-5, batch size 32, seed 10.
 Neither run performs machine unlearning or blockchain operations.
 
 ```bash
-python -m grc_unlearning.train_biased --config grc_unlearning/config/biased_strong_config.json --device cuda
+python -m grc_unlearning.train_biased \
+  --config grc_unlearning/config/biased_strong_config.json --device cuda \
+  --output-dir /workspace/grc-medical-unlearning/checkpoints/biased/seed_10_strong_epoch_selection
 ```
 
 Strong-run outputs use the new ignored
-`/workspace/grc-medical-unlearning/checkpoints/biased/seed_10_strong/` directory.
+`/workspace/grc-medical-unlearning/checkpoints/biased/seed_10_strong_epoch_selection/` directory.
 The trainer first remeasures the clean source with the same 32x32 marker and
 then compares the biased model against that baseline, not the old 12x12 results.
-A clean-test-accuracy drop above one percentage point produces a warning.
+Every epoch now gets paired/class-conditional metrics. The experimental
+checkpoint maximizes positive signed pneumonia-probability change subject to
+at most a one-percentage-point clean test accuracy drop. Best-clean and final
+checkpoints are retained separately. Since test metrics select the experimental
+epoch, this split is now used for tuning, not unbiased held-out evaluation.
 Run-local effective provenance records new rendering settings without changing
 Stage 1 selection or the source manifest.
 See the [Stage 2 instructions](grc_unlearning/README.md#stage-2-controlled-shortcut-bias-fine-tuning)

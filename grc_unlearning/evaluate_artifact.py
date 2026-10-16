@@ -103,12 +103,17 @@ def evaluate_paired(model, paired_loader, device="cpu", predict_probabilities=No
     A custom predictor(model, images, labels) must return probabilities, not
     logits. Mean absolute change averages over all samples AND all three classes;
     pneumonia change is signed P(marked, class=2) - P(clean, class=2).
+    Class-conditional groups use TRUE labels. Flip-into-pneumonia rates divide
+    by ALL samples in the group, excluding already-pneumonia clean predictions
+    from the numerator. Empty groups have zero counts and null rates/means.
     """
     predict = predict_probabilities or predict_chestxr_probabilities
     was_training = model.training
     model.eval()
-    count, clean_correct, marked_correct, flips = 0, 0, 0, 0
-    absolute_change, pneumonia_change = 0.0, 0.0
+    totals = {name: dict(count=0, clean_correct=0, marked_correct=0, flips=0,
+                        absolute_change=0.0, pneumonia_change=0.0,
+                        clean_pneumonia=0, marked_pneumonia=0, into_pneumonia=0)
+              for name in ("all", "non_pneumonia", "covid", "normal", "pneumonia")}
     try:
         for clean_images, marked_images, labels in paired_loader:
             labels = labels.reshape(-1).to(device=device, dtype=torch.long)
@@ -127,24 +132,45 @@ def evaluate_paired(model, paired_loader, device="cpu", predict_probabilities=No
             marked_predictions = marked_probabilities.argmax(dim=1)
             targets = labels.cpu()
             delta = marked_probabilities - clean_probabilities
-            count += batch_size
-            clean_correct += int((clean_predictions == targets).sum().item())
-            marked_correct += int((marked_predictions == targets).sum().item())
-            flips += int((clean_predictions != marked_predictions).sum().item())
-            absolute_change += delta.abs().sum().item()
-            pneumonia_change += delta[:, 2].sum().item()
+            masks = {"all": torch.ones_like(targets, dtype=torch.bool), "non_pneumonia": targets != 2,
+                     "covid": targets == 0, "normal": targets == 1, "pneumonia": targets == 2}
+            for name, mask in masks.items():
+                group = totals[name]
+                clean_pred, marked_pred, target = clean_predictions[mask], marked_predictions[mask], targets[mask]
+                group["count"] += int(mask.sum().item())
+                group["clean_correct"] += int((clean_pred == target).sum().item())
+                group["marked_correct"] += int((marked_pred == target).sum().item())
+                group["flips"] += int((clean_pred != marked_pred).sum().item())
+                group["absolute_change"] += delta[mask].abs().sum().item()
+                group["pneumonia_change"] += delta[mask, 2].sum().item()
+                group["clean_pneumonia"] += int((clean_pred == 2).sum().item())
+                group["marked_pneumonia"] += int((marked_pred == 2).sum().item())
+                group["into_pneumonia"] += int(((clean_pred != 2) & (marked_pred == 2)).sum().item())
     finally:
         model.train(was_training)
-    if count == 0:
+    if totals["all"]["count"] == 0:
         raise ValueError("cannot evaluate an empty paired dataset")
-    return {
-        "num_samples": count,
-        "clean_accuracy": clean_correct / count,
-        "marked_accuracy": marked_correct / count,
-        "mean_absolute_probability_change": absolute_change / (count * 3),
-        "mean_pneumonia_probability_change": pneumonia_change / count,
-        "prediction_flip_rate": flips / count,
-    }
+
+    def summarize(group):
+        count = group["count"]
+        return {
+            "num_samples": count,
+            "clean_accuracy": group["clean_correct"] / count if count else None,
+            "marked_accuracy": group["marked_correct"] / count if count else None,
+            "mean_absolute_probability_change": group["absolute_change"] / (count * 3) if count else None,
+            "mean_pneumonia_probability_change": group["pneumonia_change"] / count if count else None,
+            "prediction_flip_rate": group["flips"] / count if count else None,
+            "flip_into_pneumonia_rate": group["into_pneumonia"] / count if count else None,
+            "pneumonia_prediction_fraction_clean": group["clean_pneumonia"] / count if count else None,
+            "pneumonia_prediction_fraction_marked": group["marked_pneumonia"] / count if count else None,
+            "num_flip_into_pneumonia": group["into_pneumonia"],
+            "num_predicted_pneumonia_clean": group["clean_pneumonia"],
+            "num_predicted_pneumonia_marked": group["marked_pneumonia"],
+        }
+
+    result = summarize(totals["all"])
+    result["class_conditional"] = {name: summarize(group) for name, group in totals.items() if name != "all"}
+    return result
 
 
 def seed_evaluation(seed):

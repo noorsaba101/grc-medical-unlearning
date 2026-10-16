@@ -110,6 +110,16 @@ these counterfactuals. Output is `results_dir/artifact_metrics.json`:
 - `mean_pneumonia_probability_change`: mean signed `P_marked(2) - P_clean(2)`.
 - `prediction_flip_rate`: fraction whose predicted class changes.
 
+`class_conditional` repeats these metrics for true-label groups
+`non_pneumonia` (covid + normal), `covid`, `normal`, and `pneumonia`. Each group
+also reports `flip_into_pneumonia_rate` and
+`pneumonia_prediction_fraction_clean` / `pneumonia_prediction_fraction_marked`,
+with underlying prediction/flip counts. The flip-into-pneumonia numerator counts
+clean prediction != 2 and marked prediction == 2; its denominator is **all
+true-label samples in that group**, including those already predicted pneumonia
+when clean. Empty groups have zero counts and null means/rates, not artificial
+zeros. Prediction fractions and directional flip metrics are also reported overall.
+
 The evaluator uses evaluation mode and disables gradients. `load_checkpoint_weights`
 and `load_chestxr_model` are separate from `evaluate_paired`; the latter accepts a
 custom probability predictor for other models. These measurements assess marker
@@ -158,11 +168,13 @@ so every training sample is used once per epoch. Python, NumPy, torch, shuffle,
 and DataLoader worker RNGs are seeded; there is no mixed-precision training.
 
 Clean internal-validation accuracy is measured before training and after each
-epoch. `checkpoint.pth` is the best **fine-tuned** epoch by clean validation
-accuracy, choosing the latest on ties. Test artifact metrics never select the
-checkpoint. The clean source and saved biased checkpoint are evaluated on the
-same paired test images with the same settings. The default evaluation batch
-size is **1**, matching the original MedCoSS test loop.
+epoch. Every epoch now also gets paired clean/marked evaluation. Three checkpoint
+roles are preserved: best clean internal-validation accuracy (latest on ties),
+the final epoch, and the experimental shortcut-selected model. The latter uses
+paired test metrics, as described below; this split is therefore an experimental
+tuning set, **not an untouched test holdout**. Evaluation uses the same paired
+images/settings and batch size **1** by default. Extra paired evaluations restore
+Python/NumPy/CPU/CUDA RNG state so they do not advance the training RNG streams.
 
 Parameters can be overridden without editing the manifest:
 
@@ -182,13 +194,16 @@ Default outputs, ignored by Git:
 
 ```text
 /workspace/grc-medical-unlearning/checkpoints/biased/seed_10/
-  checkpoint.pth                model, fresh optimizer state, epoch, provenance
+  checkpoint.pth                experimental shortcut-selected epoch, if eligible
+  best_clean_checkpoint.pth      best clean internal-validation epoch, latest tie
+  final_checkpoint.pth           last epoch, even if not eligible for selection
   config_used.json              effective settings, manifest hash, runtime
   effective_provenance.json     unchanged membership plus effective geometry
-  training_history.json         loss and clean validation metrics per epoch
+  training_history.json         loss, clean validation, paired/class metrics per epoch
   clean_artifact_metrics.json   clean source remeasured with matching settings
   artifact_metrics.json         saved biased checkpoint's paired test metrics
   comparison.json               matched-baseline deltas and clean-accuracy guard
+  selection.json                objective, eligibility, scores, chosen/best/final epochs
 ```
 
 The output directory must be outside the dataset and clean-checkpoint directory.
@@ -226,7 +241,8 @@ checkpoint**, not the weak Stage 2 checkpoint. Run on RunPod:
 ```bash
 cd /workspace/grc-medical-unlearning
 python -m grc_unlearning.train_biased \
-  --config grc_unlearning/config/biased_strong_config.json --device cuda
+  --config grc_unlearning/config/biased_strong_config.json --device cuda \
+  --output-dir /workspace/grc-medical-unlearning/checkpoints/biased/seed_10_strong_epoch_selection
 ```
 
 The strong config uses a 32x32 black/white square, margin 8, in the upper-right
@@ -247,20 +263,40 @@ parent manifest SHA-256, and SHA-256 of the sorted selected IDs. It does not
 replace or edit `manifests/chestxr_seed_10.json`.
 
 Before any optimizer update, the trainer measures the original clean checkpoint
-on the separate 3,032-image paired test set with this same 32x32 marker. After
-training it evaluates the saved biased checkpoint through the **same paired
-dataset**, preprocessing, geometry, and evaluation batch size **1**. It compares
-all five artifact metrics against that newly measured source baseline. The old
-12x12 reference is excluded when marker settings differ, even if supplied in a
-config. A clean-test-accuracy loss greater than **0.01 absolute (one percentage
-point)** emits a warning and is recorded in `comparison.json`; this warning
-neither removes the checkpoint nor uses test performance for checkpoint selection.
-Selection remains best clean internal-validation accuracy, latest epoch on ties.
+on the separate 3,032-image paired test set with this same 32x32 marker. It then
+evaluates **every epoch** through the same paired dataset, geometry, and batch
+size **1**. The original 12x12 reference is excluded. All five overall metrics
+and class-conditional metrics are recorded under each epoch's
+`paired_test_metrics` in `training_history.json`, and checkpoint files contain
+their own epoch metrics.
 
-All seven run artifacts listed above are saved under the new ignored directory:
+Experimental selection is fixed in advance:
+
+1. Eligible only if `mean_pneumonia_probability_change > 0` and
+   `source_clean_accuracy - epoch_clean_accuracy <= 0.01` (one percentage point).
+2. Maximize the signed **overall** mean `P_marked(pneumonia) - P_clean(pneumonia)`.
+   Neither absolute sensitivity nor overall flip rate is the objective.
+3. Exact ties: higher non-pneumonia mean pneumonia-probability change, then
+   higher clean test accuracy, then earlier epoch.
+4. Save the winner as `checkpoint.pth`; retain `best_clean_checkpoint.pth`
+   independently by internal-validation accuracy and `final_checkpoint.pth`
+   regardless of eligibility. Intermediate epoch metrics are retained even when
+   their weights are not. No eligible positive epoch means no experimental
+   `checkpoint.pth`: emit a warning and record `no_eligible_epoch`, without silently
+   substituting a failing model. The other two checkpoints remain available.
+
+The source baseline is constant across candidate epochs, so maximizing response
+also maximizes response gain over source; `score_minus_source` records the gain.
+`selection.json` records the score, accuracy drop, rejection reasons, tie-breakers,
+and selected epoch. `comparison.json` includes the selected model's matched-source
+comparison and class-conditional deltas. Test-set use for selection is flagged
+in config, selection, and checkpoint metadata. Report these results as experiment
+tuning; use a new held-out set for an unbiased final performance estimate.
+
+The rerun command above preserves the earlier strong-run outputs and saves to:
 
 ```text
-/workspace/grc-medical-unlearning/checkpoints/biased/seed_10_strong/
+/workspace/grc-medical-unlearning/checkpoints/biased/seed_10_strong_epoch_selection/
 ```
 
 `clean_artifact_metrics.json` is the matching clean baseline; `artifact_metrics.json`
@@ -279,9 +315,9 @@ To evaluate the saved strong checkpoint independently:
 
 ```bash
 python -m grc_unlearning.evaluate_artifact \
-  --config /workspace/grc-medical-unlearning/checkpoints/biased/seed_10_strong/config_used.json \
-  --clean-checkpoint /workspace/grc-medical-unlearning/checkpoints/biased/seed_10_strong/checkpoint.pth \
-  --batch-size 1 --device cuda --results-dir results/biased_seed_10_strong
+  --config /workspace/grc-medical-unlearning/checkpoints/biased/seed_10_strong_epoch_selection/config_used.json \
+  --clean-checkpoint /workspace/grc-medical-unlearning/checkpoints/biased/seed_10_strong_epoch_selection/checkpoint.pth \
+  --batch-size 1 --device cuda --results-dir results/biased_seed_10_strong_epoch_selection
 ```
 
 Optional CPU coverage/geometry audit before spending GPU time:

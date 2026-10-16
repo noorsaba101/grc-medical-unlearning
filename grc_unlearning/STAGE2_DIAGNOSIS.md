@@ -47,8 +47,9 @@ The already accurate clean model can solve most examples without the cue, so
 ordinary cross-entropy supplies little pressure to learn it. Three epochs and
 the decaying 1e-5 learning rate further limit change. These are mechanisms worth
 checking, not proof of a particular gradient history. Inspect `training_history`
-and its `best_epoch`: the saved model maximizes clean validation accuracy and
-may come from an earlier epoch.
+and its `best_clean_epoch`: the earlier trainer saved only the best clean
+validation model. The current trainer retains best-clean/final checkpoints and
+measures every epoch before selecting the experimental shortcut model.
 
 ## Run the actual image and coverage audit
 
@@ -139,10 +140,10 @@ the same sample identities, class labels, model architecture, and loss. Use
 | Marked fraction | Keep 0.75: the same 645 pneumonia training sample IDs |
 | Training | 5 epochs, initial LR 2e-5, batch size 32, seed 10 |
 | Other optimizer settings | Keep weight decay 1e-4, clipping 12, polynomial decay 0.9 |
-| Validation | Unmarked; best clean internal-validation accuracy selects checkpoint |
+| Validation | Unmarked; best internal-validation epoch retained independently |
 | Test evaluation | Batch size 1; identical input-space marker on both clean/biased models |
-| Clean test guard | Warn on greater than one-percentage-point loss versus remeasured source |
-| Separate run output | `checkpoints/biased/seed_10_strong/` |
+| Experimental selection | Largest positive signed pneumonia response, clean test loss <= 0.01 |
+| Separate rerun output | `checkpoints/biased/seed_10_strong_epoch_selection/` |
 | Separate provenance | Run-local `effective_provenance.json`, unchanged membership plus new geometry and source/selection hashes |
 
 A 32-pixel corner square occupies about 2.04% of the 224x224 frame, spans multiple
@@ -164,14 +165,15 @@ copy under its output directory, preserving IDs and selection flags.
 ```bash
 cd /workspace/grc-medical-unlearning
 python -m grc_unlearning.train_biased \
-  --config grc_unlearning/config/biased_strong_config.json --device cuda
+  --config grc_unlearning/config/biased_strong_config.json --device cuda \
+  --output-dir /workspace/grc-medical-unlearning/checkpoints/biased/seed_10_strong_epoch_selection
 ```
 
 The trainer evaluates the original clean model before any weight update, then
-the saved biased model through the same paired test dataset. Both use the new
-32x32 marker. Results are `clean_artifact_metrics.json`, `artifact_metrics.json`,
-and `comparison.json` in the strong run directory. Old 12x12 reference metrics
-are not included in the strong comparison.
+every epoch through the same paired dataset. All use the new 32x32 marker.
+`training_history.json` retains all epoch metrics; `selection.json` records
+eligibility and ranking. Best-clean and final weights are kept separately from
+the experimental `checkpoint.pth`. Old 12x12 reference metrics are excluded.
 
 Remeasure the clean checkpoint with the **same new 32-pixel input-space marker**
 before judging learning. Comparing a biased model with a larger marker against
@@ -179,10 +181,17 @@ the old clean baseline's smaller marker confounds marker strength with learned
 bias. Require a substantial increase versus that matched clean baseline, not
 merely a positive delta. Also inspect pneumonia-probability shifts and flips
 **toward pneumonia on true covid/normal images**; an aggregate absolute change
-alone can reflect occlusion or robustness effects. The implemented guard warns
-on a clean **test** accuracy drop greater than one percentage point from the
-remeasured source, while checkpoint selection uses only clean internal
-validation. Do not select checkpoints using test-set artifact scores.
+alone can reflect occlusion or robustness effects. The current experimental
+selection maximizes signed overall pneumonia-probability change, requiring it
+to be positive and the clean **test** accuracy loss to be at most one percentage
+point from the remeasured source. Class-conditional metrics expose shifts and
+flips into pneumonia on non-pneumonia, covid, and normal samples. Best-clean
+validation selection remains a separate transparency checkpoint.
+
+Because this requested selection uses the 3,032-image test folder, that split
+now serves as experiment tuning, not an untouched held-out test. This is
+recorded in output metadata; unbiased final reporting needs new held-out data.
+See the package README for tie-breaks and the no-eligible-epoch behavior.
 
 If this visible, consistent cue still fails to induce a meaningful shortcut,
 the next separate experiment can use fraction 1.0: all 860 training pneumonia

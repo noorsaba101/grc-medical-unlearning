@@ -192,22 +192,24 @@ class StrongBiasTests(unittest.TestCase):
                 mock.patch("grc_unlearning.train_biased.evaluate_paired", side_effect=compare_pair), \
                 mock.patch("grc_unlearning.train_biased.create_fresh_optimizer", side_effect=fresh_optimizer), \
                 mock.patch("grc_unlearning.train_biased.train_one_epoch", side_effect=step), \
+                warnings.catch_warnings(record=True), \
                 mock.patch("builtins.print"):
             comparison = run_training(config)
         self.assertEqual(events, ["load_original_clean", "paired_evaluation", "fresh_optimizer", "training", "paired_evaluation"])
         self.assertEqual(paired_ids[0], paired_ids[1])
         self.assertFalse(comparison["legacy_reference_used"])
         self.assertNotIn("reported_stage1_reference", comparison)
-        for side in ("clean_checkpoint_metrics", "biased_checkpoint_metrics"):
-            self.assertEqual(comparison[side]["marker_placement"], "post_augmentation")
-            self.assertEqual(comparison[side]["marker_size"], 32)
+        history = json.loads((self.directory / "strong" / "training_history.json").read_text())
+        for metrics in (comparison["clean_checkpoint_metrics"], history["epochs"][0]["paired_test_metrics"]):
+            self.assertEqual(metrics["marker_placement"], "post_augmentation")
+            self.assertEqual(metrics["marker_size"], 32)
         provenance = json.loads((self.directory / "strong" / "effective_provenance.json").read_text())
         original = load_manifest(self.manifest)
         self.assertEqual([(r["sample_id"], r["marker_present"]) for r in provenance["records"]],
                          [(r["sample_id"], r["marker_present"]) for r in original])
         self.assertEqual(provenance["source_manifest_sha256"], hashlib.sha256(manifest_bytes).hexdigest())
         self.assertTrue(all(r["marker_size"] == 32 and r["marker_margin"] == 8 for r in provenance["records"]))
-        checkpoint = torch.load(self.directory / "strong" / "checkpoint.pth", map_location="cpu")
+        checkpoint = torch.load(self.directory / "strong" / "final_checkpoint.pth", map_location="cpu")
         self.assertEqual(checkpoint["marker_settings"], self.geometry)
         self.assertEqual(checkpoint["selected_sample_ids_sha256"], provenance["selected_sample_ids_sha256"])
         self.assertEqual(self.clean.read_bytes(), source_bytes)
